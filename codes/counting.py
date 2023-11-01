@@ -10,6 +10,7 @@ from collections import defaultdict
 
 from ultralytics import YOLO
 from ultralytics_clone.trackers.byte_tracker import BYTETracker
+from ultralytics_clone.trackers.my_tracker import MyTracker
 
 palette = (2**11 - 1, 2**15 - 1, 2**20 - 1)
 
@@ -20,20 +21,13 @@ def compute_color_for_labels(label):
     return tuple(color)
 
 
-def counting(model_path, tracker_config_path, video_path, result_path, count_thres, display=False, save=False):
+def counting(model_path, tracker, video_path, result_path, count_thres, display=False, save=False):
     resized_height = 1000
     # Load the YOLOv8 model
     model = YOLO(model_path)
 
     # Open the video file
     cap = cv2.VideoCapture(video_path)
-
-    # Store the track history
-    track_history = defaultdict(lambda: [])
-    counted_track = {}
-
-    tracker_config = OmegaConf.load(tracker_config_path)
-    tracker = BYTETracker(tracker_config)
 
     fps = cap.get(cv2.CAP_PROP_FPS)
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -43,6 +37,10 @@ def counting(model_path, tracker_config_path, video_path, result_path, count_thr
     resized_width = round(width * resize_ratio)
 
     count_thres_width = resized_width * count_thres
+
+    # Store the track history
+    track_history = defaultdict(lambda: [])
+    counted_track = {}
 
     if save:
         vid_filename = os.path.split(video_path)[1]
@@ -135,25 +133,72 @@ def counting(model_path, tracker_config_path, video_path, result_path, count_thr
                     if abs(track[-1][0] - track[0][0]) > count_thres_width:
                         counted_track[track_id] = True
                 points = np.hstack(track).astype(np.int32).reshape((-1, 1, 2))
+                color = compute_color_for_labels(track_id)
+                text_pos = [int(track[-1][0]), int(track[-1][1])]
+                cv2.putText(
+                    resized_frame,
+                    f"{track_id}",
+                    text_pos,
+                    2,
+                    0.5,
+                    (0, 0, 0),
+                    2,
+                    cv2.LINE_AA,
+                )
+                cv2.putText(
+                    resized_frame,
+                    f"{track_id}",
+                    text_pos,
+                    2,
+                    0.2,
+                    color,
+                    2,
+                    cv2.LINE_AA,
+                )
                 cv2.polylines(
                     resized_frame,
                     [points],
                     isClosed=False,
-                    color=compute_color_for_labels(track_id),
+                    color=color,
                     thickness=2,
                     lineType=cv2.LINE_AA,
                 )
 
             for tracked_track in tracker.lost_stracks:
                 track_id = tracked_track.track_id
+                # track이 화면을 벗어나면 건너뛰기
+                if tracked_track.mean[0] > width:
+                    continue
                 # Draw the tracking lines
                 track = track_history[track_id]
                 points = np.hstack(track).astype(np.int32).reshape((-1, 1, 2))
+                color = compute_color_for_labels(track_id)
+                text_pos = [int(track[-1][0]), int(track[-1][1])]
+                cv2.putText(
+                    resized_frame,
+                    f"{track_id}",
+                    text_pos,
+                    2,
+                    0.3,
+                    (0, 0, 0),
+                    2,
+                    cv2.LINE_AA,
+                )
+                cv2.putText(
+                    resized_frame,
+                    f"{track_id}",
+                    text_pos,
+                    2,
+                    0.2,
+                    color,
+                    2,
+                    cv2.LINE_AA,
+                )
                 cv2.polylines(
                     resized_frame,
                     [points],
                     isClosed=False,
-                    color=compute_color_for_labels(track_id),
+                    color=color,
                     thickness=2,
                     lineType=cv2.LINE_AA,
                 )
@@ -220,30 +265,44 @@ if __name__ == "__main__":
     opt = parse_opt()
     # counting(**vars(opt))
 
-    bytetrack_config_path = "configs/bytetrack.yaml"
-    bot_sort_config_path = "configs/bot_sort.yaml"
-    my_tracker_config_path = "configs/my_tracker.yaml"
+    tracker_name = "ByteTrack"
     count_thres = 1 / 3
+
+    tracker_config_pathes = {
+        "ByteTrack": "configs/bytetrack_old.yaml",
+        "BotSORT": "configs/bot_sort.yaml",
+        "MyTracker": "configs/my_tracker.yaml",
+    }
+
+    tracker_config_path = tracker_config_pathes[tracker_name]
+
+    # tracker_config = OmegaConf.load(tracker_config_path)
+    # tracker = MyTracker(tracker_config, 1024)
+    # # tracker = BYTETracker(tracker_config)
+
     # counting(
-    #     model_path=r"./detection_checkpoints/yolov8m_1000/weights/best.pt",
-    #     tracker_config_path=bytetrack_config_path,
+    #     model_path=r"./detection_checkpoints/yolov8m_GFB_WSU2019_1000/weights/best.pt",
+    #     tracker=tracker,
     #     # video_path=r"D:\DeepLearning\Dataset\RDA apple data\2023-08-16\7\230816-Cam1-Line07-L.mp4",
     #     video_path=r"D:\DeepLearning\Dataset\RDA apple data\2023-10-06\7\231006-Cam1-Line07-L.mp4",
     #     result_path=r"runs/RDA apple data_1000",
     #     count_thres=count_thres,
     #     display=True,
-    #     save=True,
+    #     save=False,
     # )
 
     vid_file_list = glob.glob(r"D:\DeepLearning\Dataset\RDA apple data\2023-10-06\*\*[LR].mp4")
-    model_path = r"./detection_checkpoints/yolov8m_GFB_WSU2019_KFuji_800/weights/best.pt"
-    result_path = r"runs/GFB_WSU2019_KFuji_800_hyperparam"
+    model_path = r"./detection_checkpoints/yolov8m_mixed_data_640/weights/best.pt"
+    result_path = r"runs/mixed_data_640"
     counting_results = {}
 
     for vid_file_path in vid_file_list:
+        tracker_config = OmegaConf.load(tracker_config_path)
+        tracker = BYTETracker(tracker_config)
+
         num_tracks, num_apples = counting(
             model_path=model_path,
-            tracker_config_path=bytetrack_config_path,
+            tracker=tracker,
             video_path=vid_file_path,
             result_path=result_path,
             count_thres=count_thres,

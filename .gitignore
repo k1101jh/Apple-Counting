@@ -3,6 +3,7 @@
 
 /runs/
 /detection_checkpoints/
+/merged_vids/
 
 ### Python ###
 # Byte-compiled / optimized / DLL files
