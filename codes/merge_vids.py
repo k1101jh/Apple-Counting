@@ -68,23 +68,28 @@ def merge_vids(vid_paths: list[str], captions: list[str], result_path):
 
 
 if __name__ == "__main__":
-    result_dir = "merged_vids/include_exclude_Kfuji_800_hyperparam"
+    result_dir = "merged_vids/RDA_bytetrack_mytracker_hyperparam"
     os.makedirs(result_dir, exist_ok=True)
 
     source_vids = [
-        "runs/GFB_WSU2019_KFuji_800_hyperparam",
-        "runs/GFB_WSU2019_800_hyperparam",
+        "runs/tracking/MyTracker/RDA_800_vx_only",
+        "runs/tracking/MyTracker/RDA_800_vx_vy",
+        "runs/tracking/MyTracker/RDA_800_new_track_only_num_matched",
+        "runs/tracking/ByteTrack_for_compare/RDA_800_byte_tracker",
     ]
+
     captions = [
-        "include KFuji",
-        "exclude KFuji",
+        "mytracker vx",
+        "mytracker vx vy",
+        "mytracker new track only",
+        "bytetracker",
     ]
 
     filenames = [
         "231006-Cam1-Line07-L.mp4",
-        "231006-Cam1-Line07-R.mp4",
-        "231006-Cam1-Line11-L.mp4",
-        "231006-Cam1-Line11-R.mp4",
+        # "231006-Cam1-Line07-R.mp4",
+        # "231006-Cam1-Line11-L.mp4",
+        # "231006-Cam1-Line11-R.mp4",
     ]
 
     for filename in tqdm(filenames, desc="vid_num", position=0, leave=True):

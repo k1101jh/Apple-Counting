@@ -6,7 +6,7 @@ import numpy as np
 from .basetrack import BaseTrack, TrackState
 from .byte_tracker import BYTETracker, STrack
 from .utils import matching
-from .utils.kalman_filter import KalmanFilterXYAH
+from .utils.kalman_filter import KalmanFilterXYWH
 
 
 class MyTrack(STrack):
@@ -43,12 +43,37 @@ class MyTrack(STrack):
         tlwh_to_tlbr(tlwh): Convert tlwh bounding box to tlbr format.
     """
 
-    shared_kalman = KalmanFilterXYAH()
+    shared_kalman = KalmanFilterXYWH()
 
     def __init__(self, tlwh, score, cls):
         """Initialize new STrack instance."""
         super().__init__(tlwh, score, cls)
-        self.start_x_pos, self.start_y_pos, _, _ = self.tlwh_to_xywh(tlwh)
+        self.start_x, self.start_y, _, _ = self.tlwh_to_xywh(tlwh[:-1])
+        self.coefficient_matrix = []
+        self.num_matched = 0
+
+    def predict(self):
+        """Predicts mean and covariance using Kalman filter."""
+        mean_state = self.mean.copy()
+        if self.state != TrackState.Tracked:
+            mean_state[6] = 0
+            mean_state[7] = 0
+        self.mean, self.covariance = self.kalman_filter.predict(mean_state, self.covariance)
+
+    @staticmethod
+    def multi_predict(stracks):
+        """Perform multi-object predictive tracking using Kalman filter for given stracks."""
+        if len(stracks) <= 0:
+            return
+        multi_mean = np.asarray([st.mean.copy() for st in stracks])
+        multi_covariance = np.asarray([st.covariance for st in stracks])
+        for i, st in enumerate(stracks):
+            if st.state != TrackState.Tracked:
+                multi_mean[i][7] = 0
+        multi_mean, multi_covariance = STrack.shared_kalman.multi_predict(multi_mean, multi_covariance)
+        for i, (mean, cov) in enumerate(zip(multi_mean, multi_covariance)):
+            stracks[i].mean = mean
+            stracks[i].covariance = cov
 
     def activate(self, kalman_filter, frame_id):
         """Start a new tracklet."""
@@ -58,10 +83,90 @@ class MyTrack(STrack):
 
         self.tracklet_len = 0
         self.state = TrackState.Tracked
-        if frame_id == 1:
-            self.is_activated = True
+        # if frame_id == 1:
+        #     self.is_activated = True
         self.frame_id = frame_id
         self.start_frame = frame_id
+
+    def update(self, new_track, frame_id):
+        """
+        Update the state of a matched track.
+
+        Args:
+            new_track (STrack): The new track containing updated information.
+            frame_id (int): The ID of the current frame.
+        """
+        self.frame_id = frame_id
+        self.tracklet_len += 1
+        self.num_matched += 1
+
+        new_tlwh = new_track.tlwh
+        self.mean, self.covariance = self.kalman_filter.update(
+            self.mean, self.covariance, self.convert_coords(new_tlwh)
+        )
+        self.state = TrackState.Tracked
+        self.is_activated = True
+
+        self.score = new_track.score
+        self.cls = new_track.cls
+        self.idx = new_track.idx
+
+    def calc_coefficient_matrix(self, good_stracks):
+        self.coefficient_matrix = {}
+        for good_strack in good_stracks:
+            # x, y, w, h, vx, vy, vw, vh
+            # vx와 vy만 필요
+            if (good_strack.mean[4] == 0) or (good_strack.mean[5] == 0):
+                continue
+
+            coefficient_matrix = [self.mean[4] / good_strack.mean[4], self.mean[5] / good_strack.mean[5]]
+            self.coefficient_matrix[good_strack.track_id] = coefficient_matrix
+
+    def update_with_coefficient_matrix(self, good_stracks):
+        # coeffs = []
+        vx_vys = []
+
+        for good_strack in good_stracks:
+            if good_strack.track_id in self.coefficient_matrix:
+                coefficient_matrix = self.coefficient_matrix[good_strack.track_id]
+                vx_vys.append(
+                    [good_strack.mean[4] * coefficient_matrix[0], good_strack.mean[5] * coefficient_matrix[1]]
+                )
+                # coeffs.append(coefficient_matrix)
+
+        if len(vx_vys) > 0:
+            vx_vy = np.mean(vx_vys, axis=0)
+
+            self.mean[4] = vx_vy[0]
+            self.mean[5] = vx_vy[1]
+
+            # self.predict()
+
+        # if len(vx_vys) >= 1:
+        #     print()
+        #     print("id:", self.track_id)
+        #     print("pos:", self.mean[0], self.mean[1])
+        #     print("mean:", self.mean[4], self.mean[5])
+        #     print("coefficient_mat:")
+        #     for coeff in coeffs:
+        #         print(coeff)
+        #     print("vx, vy")
+        #     for vx_vy in vx_vys:
+        #         print(vx_vy)
+
+    def force_update(self, good_stracks):
+        vx_vys = []
+
+        for good_strack in good_stracks:
+            vx_vys.append([good_strack.mean[4], good_strack.mean[5]])
+
+        if len(vx_vys) > 0:
+            vx_vy = np.mean(vx_vys, axis=0)
+
+            self.mean[4] = vx_vy[0]
+            self.mean[5] = vx_vy[1]
+
+            self.predict()
 
     @property
     def tlwh(self):
@@ -71,6 +176,11 @@ class MyTrack(STrack):
         ret = self.mean[:4].copy()
         ret[:2] -= ret[2:] / 2
         return ret
+
+    @property
+    def xywh(self):
+        """Get current position in bounding box format `(top left x, top left y, width, height)`."""
+        return self.tlwh_to_xywh(self._tlwh)
 
     def convert_coords(self, tlwh):
         """Converts Top-Left-Width-Height bounding box coordinates to X-Y-Width-Height format."""
@@ -88,6 +198,7 @@ class MyTracker:
     """
     적용 목록
     - Kalman filter 사용 시 종횡비 대신 w, h 사용
+    - activate thresh를 설정하여 track이 생성되고 이 thresh 이전에 다시 매칭되면 activate로 전환
 
 
     적용할 목록
@@ -122,7 +233,7 @@ class MyTracker:
         self.lost_stracks = []  # type: list[STrack]
         self.removed_stracks = []  # type: list[STrack]
         self.good_stracks = []  # type: list[STrack]
-        self.correlation_matrix = []
+        # self.unconfirmed_stracks = []
 
         self.frame_id = 0
         self.args = args
@@ -210,6 +321,26 @@ class MyTracker:
             if track.state != TrackState.Lost:
                 track.mark_lost()
                 lost_stracks.append(track)
+
+        # Good track 찾아내기
+        # 가장 긴 track을 최대 n개 찾아내기
+        stracks_lens = {}
+        good_stracks = []
+        for track in self.tracked_stracks:
+            if track.is_activated:
+                if track.num_matched > self.args.good_track_thresh:
+                    stracks_lens[track] = track.num_matched
+                # track_x_len = abs(track.start_x - track.mean[0])
+                # if track_x_len > self.vid_width * self.args.good_track_thresh:
+                #     stracks_lens[track] = track_x_len
+        stracks_lens = sorted(stracks_lens.items(), key=lambda item: item[1], reverse=True)
+        for strack, _ in stracks_lens:
+            good_stracks.append(strack)
+            if len(good_stracks) == self.args.num_good_stracks:
+                break
+
+        print(f"num good stracks: {len(good_stracks)}")
+
         # Deal with unconfirmed tracks, usually tracks with only one beginning frame
         detections = [detections[i] for i in u_detection]
         dists = self.get_dists(unconfirmed, detections)
@@ -219,20 +350,32 @@ class MyTracker:
             activated_stracks.append(unconfirmed[itracked])
         for it in u_unconfirmed:
             track = unconfirmed[it]
-            track.mark_removed()
-            removed_stracks.append(track)
+            # activate threshold 안에 다시 검출된 경우에 activate로 전환
+            if track.start_frame - self.frame_id >= self.args.activate_thresh:
+                track.mark_removed()
+                removed_stracks.append(track)
+            # else:
+            # self.tracked_stracks.append(track)
         # Step 4: Init new stracks
         for inew in u_detection:
             track = detections[inew]
             if track.score < self.args.new_track_thresh:
                 continue
+            # 이 코드가 실제로 activate 시키지는 않음(frame_id가 1인 경우만 activate)
             track.activate(self.kalman_filter, self.frame_id)
+
+            # good strack의 정보로 track 강제 업데이트
+            track.force_update(good_stracks)
+
             activated_stracks.append(track)
         # Step 5: Update state
         for track in self.lost_stracks:
             if self.frame_id - track.end_frame > self.max_time_lost:
                 track.mark_removed()
                 removed_stracks.append(track)
+            # good track으로 lost strack 업데이트
+            else:
+                track.update_with_coefficient_matrix(good_stracks)
 
         self.tracked_stracks = [t for t in self.tracked_stracks if t.state == TrackState.Tracked]
         self.tracked_stracks = self.joint_stracks(self.tracked_stracks, activated_stracks)
@@ -245,6 +388,12 @@ class MyTracker:
         if len(self.removed_stracks) > 1000:
             self.removed_stracks = self.removed_stracks[-999:]  # clip remove stracks to 1000 maximum
 
+        # good track으로 coefficient matrix 계산하기
+        for track in self.tracked_stracks:
+            if track.is_activated:
+                track.calc_coefficient_matrix(good_stracks)
+
+        # self.good_stracks.extend(good_stracks)
         return np.asarray(
             [x.tlbr.tolist() + [x.track_id, x.score, x.cls, x.idx] for x in self.tracked_stracks if x.is_activated],
             dtype=np.float32,
@@ -252,11 +401,27 @@ class MyTracker:
 
     def get_kalmanfilter(self):
         """Returns a Kalman filter object for tracking bounding boxes."""
-        return KalmanFilterXYAH()
+        return KalmanFilterXYWH()
 
     def init_track(self, dets, scores, cls, img=None):
         """Initialize object tracking with detections and scores using STrack algorithm."""
         return [MyTrack(xyxy, s, c) for (xyxy, s, c) in zip(dets, scores, cls)] if len(dets) else []  # detections
+
+    # def get_dists(self, tracks, detections):
+    #     """Get distances between tracks and detections using IoU and (optionally) ReID embeddings."""
+    #     dists = matching.iou_distance(tracks, detections)
+    #     dists_mask = dists > self.proximity_thresh
+
+    #     # TODO: mot20
+    #     # if not self.args.mot20:
+    #     dists = matching.fuse_score(dists, detections)
+
+    #     if self.args.with_reid and self.encoder is not None:
+    #         emb_dists = matching.embedding_distance(tracks, detections) / 2.0
+    #         emb_dists[emb_dists > self.appearance_thresh] = 1.0
+    #         emb_dists[dists_mask] = 1.0
+    #         dists = np.minimum(dists, emb_dists)
+    #     return dists
 
     def get_dists(self, tracks, detections):
         """Calculates the distance between tracks and detections using IOU and fuses scores."""
