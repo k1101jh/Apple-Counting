@@ -13,3 +13,4 @@ match_thresh: 0.8  # threshold for matching tracks
 activate_thresh: 3
 good_track_thresh: 20
 num_good_stracks: 3
+new_track_update_coeff: 0.9

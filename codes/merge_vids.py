@@ -7,6 +7,7 @@ from tqdm import tqdm
 def merge_vids(vid_paths: list[str], captions: list[str], result_path):
     # 영상이 두 개 이하면 합치는 의미 없음
     assert len(vid_paths) >= 2, "영상이 두 개 이상 필요합니다."
+    os.makedirs(os.path.split(result_path)[0], exist_ok=True)
 
     captures = []
     for vid_path in vid_paths:
@@ -68,28 +69,23 @@ def merge_vids(vid_paths: list[str], captions: list[str], result_path):
 
 
 if __name__ == "__main__":
-    result_dir = "merged_vids/RDA_bytetrack_mytracker_hyperparam"
+    result_dir = "merged_vids/counting/ByteTrack_MyTracker"
     os.makedirs(result_dir, exist_ok=True)
 
     source_vids = [
-        "runs/tracking/MyTracker/RDA_800_vx_only",
-        "runs/tracking/MyTracker/RDA_800_vx_vy",
-        "runs/tracking/MyTracker/RDA_800_new_track_only_num_matched",
-        "runs/tracking/ByteTrack_for_compare/RDA_800_byte_tracker",
+        "runs/tracking/ByteTrack/RDA_800",
+        "runs/tracking/MyTracker/RDA_800_vx",
     ]
 
-    captions = [
-        "mytracker vx",
-        "mytracker vx vy",
-        "mytracker new track only",
-        "bytetracker",
-    ]
+    captions = ["ByteTrack", "Proposed Tracker"]
 
     filenames = [
         "231006-Cam1-Line07-L.mp4",
-        # "231006-Cam1-Line07-R.mp4",
-        # "231006-Cam1-Line11-L.mp4",
-        # "231006-Cam1-Line11-R.mp4",
+        "231006-Cam1-Line11-L.mp4",
+        "231006-Cam1-Line15-L.mp4",
+        "231006-Cam1-Line07-L_counted_tracks.mp4",
+        "231006-Cam1-Line11-L_counted_tracks.mp4",
+        "231006-Cam1-Line15-L_counted_tracks.mp4",
     ]
 
     for filename in tqdm(filenames, desc="vid_num", position=0, leave=True):
@@ -97,3 +93,24 @@ if __name__ == "__main__":
         result_path = os.path.join(result_dir, filename)
 
         merge_vids(source_vid_paths, captions, result_path)
+
+    ## 원본 counting + counted track 영상
+
+    # result_dir = r"merged_vids\counting\MyTracker_RDA_800_vx"
+
+    # source_vid_paths = [
+    #     r"runs\tracking\MyTracker\RDA_800_vx\230816-Cam1-Line07-L.mp4",
+    #     r"runs\tracking\MyTracker\RDA_800_vx\230816-Cam1-Line10-L.mp4",
+    #     r"runs\tracking\MyTracker\RDA_800_vx\230816-Cam1-Line11-L.mp4",
+    #     r"runs\tracking\MyTracker\RDA_800_vx\230816-Cam1-Line14-L.mp4",
+    #     r"runs\tracking\MyTracker\RDA_800_vx\230816-Cam1-Line15-L.mp4",
+    #     r"runs\tracking\MyTracker\RDA_800_vx\230816-Cam1-Line18-L.mp4",
+    # ]
+
+    # captions = ["all tracks", "counted tracks"]
+
+    # for source_vid_path in source_vid_paths:
+    #     counted_track_vid_path = os.path.splitext(source_vid_path)[0] + "_counted_tracks.mp4"
+    #     result_path = os.path.join(result_dir, os.path.split(source_vid_path)[1])
+
+    #     merge_vids([source_vid_path, counted_track_vid_path], captions, result_path)
