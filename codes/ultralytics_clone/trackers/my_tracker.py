@@ -45,9 +45,9 @@ class MyTrack(STrack):
 
     shared_kalman = KalmanFilterXYWH()
 
-    def __init__(self, tlwh, score, cls):
+    def __init__(self, tlwh, score, cls, gt_id=None):
         """Initialize new STrack instance."""
-        super().__init__(tlwh, score, cls)
+        super().__init__(tlwh, score, cls, gt_id)
         self.start_x, self.start_y, _, _ = self.tlwh_to_xywh(tlwh[:-1])
         self.coefficient_matrix = []
         self.num_matched = 0
@@ -137,8 +137,8 @@ class MyTrack(STrack):
         if len(vx_vys) > 0:
             vx_vy = np.mean(vx_vys, axis=0)
 
-            self.mean[4] = vx_vy[0]
-            self.mean[5] = vx_vy[1]
+            self.mean[4] = vx_vy[0]  # vx
+            # self.mean[5] = vx_vy[1]  # vy
 
             # self.predict()
 
@@ -154,7 +154,7 @@ class MyTrack(STrack):
         #     for vx_vy in vx_vys:
         #         print(vx_vy)
 
-    def force_update(self, good_stracks):
+    def force_update(self, good_stracks, coeff):
         vx_vys = []
 
         for good_strack in good_stracks:
@@ -163,10 +163,8 @@ class MyTrack(STrack):
         if len(vx_vys) > 0:
             vx_vy = np.mean(vx_vys, axis=0)
 
-            self.mean[4] = vx_vy[0]
-            self.mean[5] = vx_vy[1]
-
-            self.predict()
+            self.mean[4] = vx_vy[0] * coeff
+            self.mean[5] = vx_vy[1] * coeff
 
     @property
     def tlwh(self):
@@ -254,6 +252,8 @@ class MyTracker:
         # Add index
         bboxes = np.concatenate([bboxes, np.arange(len(bboxes)).reshape(-1, 1)], axis=-1)
         cls = results.cls
+        gt_ids = results.id
+        gt_id_track_id_dict = {}
 
         remain_inds = scores > self.args.track_high_thresh
         inds_low = scores > self.args.track_low_thresh
@@ -269,8 +269,13 @@ class MyTracker:
         scores_second = scores[inds_second]
         cls_keep = cls[remain_inds]
         cls_second = cls[inds_second]
+        gt_ids_first = None
+        gt_ids_second = None
+        if gt_ids != None:
+            gt_ids_first = gt_ids[remain_inds]
+            gt_ids_second = gt_ids[inds_second]
 
-        detections = self.init_track(dets, scores_keep, cls_keep, img)
+        detections = self.init_track(dets, scores_keep, cls_keep, gt_ids_first, img)
         # Add newly detected tracklets to tracked_stracks
         unconfirmed = []
         tracked_stracks = []  # type: list[STrack]
@@ -283,6 +288,10 @@ class MyTracker:
         strack_pool = self.joint_stracks(tracked_stracks, self.lost_stracks)
         # Predict the current location with KF
         self.multi_predict(strack_pool)
+
+        # new track predict하는 코드 추가
+        self.multi_predict(unconfirmed)
+
         if hasattr(self, "gmc") and img is not None:
             warp = self.gmc.apply(img, dets)
             STrack.multi_gmc(strack_pool, warp)
@@ -297,11 +306,13 @@ class MyTracker:
             if track.state == TrackState.Tracked:
                 track.update(det, self.frame_id)
                 activated_stracks.append(track)
+                gt_id_track_id_dict[det.gt_id] = track.track_id
             else:
                 track.re_activate(det, self.frame_id, new_id=False)
                 refind_stracks.append(track)
+                gt_id_track_id_dict[det.gt_id] = track.track_id
         # Step 3: Second association, with low score detection boxes association the untrack to the low score detections
-        detections_second = self.init_track(dets_second, scores_second, cls_second, img)
+        detections_second = self.init_track(dets_second, scores_second, cls_second, gt_ids_second, img)
         r_tracked_stracks = [strack_pool[i] for i in u_track if strack_pool[i].state == TrackState.Tracked]
         # TODO
         dists = matching.iou_distance(r_tracked_stracks, detections_second)
@@ -312,9 +323,11 @@ class MyTracker:
             if track.state == TrackState.Tracked:
                 track.update(det, self.frame_id)
                 activated_stracks.append(track)
+                gt_id_track_id_dict[det.gt_id] = track.track_id
             else:
                 track.re_activate(det, self.frame_id, new_id=False)
                 refind_stracks.append(track)
+                gt_id_track_id_dict[det.gt_id] = track.track_id
 
         for it in u_track:
             track = r_tracked_stracks[it]
@@ -348,10 +361,12 @@ class MyTracker:
         for itracked, idet in matches:
             unconfirmed[itracked].update(detections[idet], self.frame_id)
             activated_stracks.append(unconfirmed[itracked])
+            if detections[idet].gt_id not in gt_id_track_id_dict:
+                gt_id_track_id_dict[detections[idet].gt_id] = track.track_id
         for it in u_unconfirmed:
             track = unconfirmed[it]
             # activate threshold 안에 다시 검출된 경우에 activate로 전환
-            if track.start_frame - self.frame_id >= self.args.activate_thresh:
+            if self.frame_id - track.start_frame >= self.args.activate_thresh:
                 track.mark_removed()
                 removed_stracks.append(track)
             # else:
@@ -365,7 +380,7 @@ class MyTracker:
             track.activate(self.kalman_filter, self.frame_id)
 
             # good strack의 정보로 track 강제 업데이트
-            track.force_update(good_stracks)
+            track.force_update(good_stracks, self.args.new_track_update_coeff)
 
             activated_stracks.append(track)
         # Step 5: Update state
@@ -394,18 +409,28 @@ class MyTracker:
                 track.calc_coefficient_matrix(good_stracks)
 
         # self.good_stracks.extend(good_stracks)
-        return np.asarray(
-            [x.tlbr.tolist() + [x.track_id, x.score, x.cls, x.idx] for x in self.tracked_stracks if x.is_activated],
-            dtype=np.float32,
+        return (
+            np.asarray(
+                [x.tlbr.tolist() + [x.track_id, x.score, x.cls, x.idx] for x in self.tracked_stracks if x.is_activated],
+                dtype=np.float32,
+            ),
+            gt_id_track_id_dict,
         )
 
     def get_kalmanfilter(self):
         """Returns a Kalman filter object for tracking bounding boxes."""
         return KalmanFilterXYWH()
 
-    def init_track(self, dets, scores, cls, img=None):
+    def init_track(self, dets, scores, cls, gt_ids, img=None):
         """Initialize object tracking with detections and scores using STrack algorithm."""
-        return [MyTrack(xyxy, s, c) for (xyxy, s, c) in zip(dets, scores, cls)] if len(dets) else []  # detections
+        if gt_ids == None:
+            return [MyTrack(xyxy, s, c) for (xyxy, s, c) in zip(dets, scores, cls)] if len(dets) else []  # detections
+        else:
+            return (
+                [MyTrack(xyxy, s, c, gt_id.item()) for (xyxy, s, c, gt_id) in zip(dets, scores, cls, gt_ids)]
+                if len(dets)
+                else []
+            )  # detections
 
     # def get_dists(self, tracks, detections):
     #     """Get distances between tracks and detections using IoU and (optionally) ReID embeddings."""
