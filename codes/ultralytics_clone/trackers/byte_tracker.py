@@ -44,13 +44,12 @@ class STrack(BaseTrack):
 
     shared_kalman = KalmanFilterXYAH()
 
-    def __init__(self, tlwh, score, cls, gt_id=None):
+    def __init__(self, tlwh, score, cls):
         """Initialize new STrack instance."""
         self._tlwh = np.asarray(self.tlbr_to_tlwh(tlwh[:-1]), dtype=np.float32)
         self.kalman_filter = None
         self.mean, self.covariance = None, None
         self.is_activated = False
-        self.gt_id = gt_id
 
         self.score = score
         self.tracklet_len = 0
@@ -252,30 +251,26 @@ class BYTETracker:
         # Add index
         bboxes = np.concatenate([bboxes, np.arange(len(bboxes)).reshape(-1, 1)], axis=-1)
         cls = results.cls
-        gt_ids = results.id
-        gt_id_track_id_dict = {}
 
         remain_inds = scores > self.args.track_high_thresh
         inds_low = scores > self.args.track_low_thresh
         inds_high = scores < self.args.track_high_thresh
-        if len(scores) == 1:
+        if len(scores) <= 1:
             remain_inds = [remain_inds]
             inds_low = [inds_low]
             inds_high = [inds_high]
-        inds_second = np.logical_and(inds_low, inds_high)
+        try:
+            inds_second = np.logical_and(inds_low, inds_high).type(torch.bool)
+        except AttributeError:
+            inds_second = np.logical_and(inds_low, inds_high)
         dets_second = bboxes[inds_second]
         dets = bboxes[remain_inds]
         scores_keep = scores[remain_inds]
         scores_second = scores[inds_second]
         cls_keep = cls[remain_inds]
         cls_second = cls[inds_second]
-        gt_ids_first = None
-        gt_ids_second = None
-        if gt_ids != None:
-            gt_ids_first = gt_ids[remain_inds]
-            gt_ids_second = gt_ids[inds_second]
 
-        detections = self.init_track(dets, scores_keep, cls_keep, gt_ids_first, img)
+        detections = self.init_track(dets, scores_keep, cls_keep, img)
         # Add newly detected tracklets to tracked_stracks
         unconfirmed = []
         tracked_stracks = []  # type: list[STrack]
@@ -302,13 +297,11 @@ class BYTETracker:
             if track.state == TrackState.Tracked:
                 track.update(det, self.frame_id)
                 activated_stracks.append(track)
-                gt_id_track_id_dict[det.gt_id] = track.track_id
             else:
                 track.re_activate(det, self.frame_id, new_id=False)
                 refind_stracks.append(track)
-                gt_id_track_id_dict[det.gt_id] = track.track_id
         # Step 3: Second association, with low score detection boxes association the untrack to the low score detections
-        detections_second = self.init_track(dets_second, scores_second, cls_second, gt_ids_second, img)
+        detections_second = self.init_track(dets_second, scores_second, cls_second, img)
         r_tracked_stracks = [strack_pool[i] for i in u_track if strack_pool[i].state == TrackState.Tracked]
         # TODO
         dists = matching.iou_distance(r_tracked_stracks, detections_second)
@@ -319,11 +312,9 @@ class BYTETracker:
             if track.state == TrackState.Tracked:
                 track.update(det, self.frame_id)
                 activated_stracks.append(track)
-                gt_id_track_id_dict[det.gt_id] = track.track_id
             else:
                 track.re_activate(det, self.frame_id, new_id=False)
                 refind_stracks.append(track)
-                gt_id_track_id_dict[det.gt_id] = track.track_id
 
         for it in u_track:
             track = r_tracked_stracks[it]
@@ -337,8 +328,6 @@ class BYTETracker:
         for itracked, idet in matches:
             unconfirmed[itracked].update(detections[idet], self.frame_id)
             activated_stracks.append(unconfirmed[itracked])
-            if detections[idet].gt_id not in gt_id_track_id_dict:
-                gt_id_track_id_dict[detections[idet].gt_id] = track.track_id
         for it in u_unconfirmed:
             track = unconfirmed[it]
             track.mark_removed()
@@ -350,15 +339,16 @@ class BYTETracker:
                 continue
             track.activate(self.kalman_filter, self.frame_id)
             activated_stracks.append(track)
-
-            # new track은 MOTA를 어떻게 평가하나?
-            # if detections[inew].gt_id not in gt_id_track_id_dict:
-            #     gt_id_track_id_dict[detections[inew].gt_id] = track.track_id
         # Step 5: Update state
         for track in self.lost_stracks:
             if self.frame_id - track.end_frame > self.max_time_lost:
                 track.mark_removed()
                 removed_stracks.append(track)
+            # track이 화면 벗어나면 제거
+            # 이 코드가 필요할지 의문
+            # if track.mean[0] > self.width or track.mean[0] < 0:
+            #     track.mark_removed()
+            #     removed_stracks.append(track)
 
         self.tracked_stracks = [t for t in self.tracked_stracks if t.state == TrackState.Tracked]
         self.tracked_stracks = self.joint_stracks(self.tracked_stracks, activated_stracks)
@@ -370,28 +360,18 @@ class BYTETracker:
         self.removed_stracks.extend(removed_stracks)
         if len(self.removed_stracks) > 1000:
             self.removed_stracks = self.removed_stracks[-999:]  # clip remove stracks to 1000 maximum
-        return (
-            np.asarray(
-                [x.tlbr.tolist() + [x.track_id, x.score, x.cls, x.idx] for x in self.tracked_stracks if x.is_activated],
-                dtype=np.float32,
-            ),
-            gt_id_track_id_dict,
+        return np.asarray(
+            [x.tlbr.tolist() + [x.track_id, x.score, x.cls, x.idx] for x in self.tracked_stracks if x.is_activated],
+            dtype=np.float32,
         )
 
     def get_kalmanfilter(self):
         """Returns a Kalman filter object for tracking bounding boxes."""
         return KalmanFilterXYAH()
 
-    def init_track(self, dets, scores, cls, gt_ids=None, img=None):
+    def init_track(self, dets, scores, cls, img=None):
         """Initialize object tracking with detections and scores using STrack algorithm."""
-        if gt_ids == None:
-            return [STrack(xyxy, s, c) for (xyxy, s, c) in zip(dets, scores, cls)] if len(dets) else []  # detections
-        else:
-            return (
-                [STrack(xyxy, s, c, gt_id.item()) for (xyxy, s, c, gt_id) in zip(dets, scores, cls, gt_ids)]
-                if len(dets)
-                else []
-            )  # detections
+        return [STrack(xyxy, s, c) for (xyxy, s, c) in zip(dets, scores, cls)] if len(dets) else []  # detections
 
     def get_dists(self, tracks, detections):
         """Calculates the distance between tracks and detections using IOU and fuses scores."""

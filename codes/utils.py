@@ -9,7 +9,7 @@ def xyxy_to_xywh(xyxy):
     x1, y1, x2, y2 = xyxy
     w = x2 - x1
     h = y2 - y1
-    return [x1, y1, x2 + w, y2 + h]
+    return [x1, y1, w, h]
 
 
 def xyxy_to_cxywh(xyxy):
@@ -70,7 +70,7 @@ def draw_trajectory(image, track_history, track_id):
         text_pos,
         cv2.FONT_HERSHEY_SIMPLEX,
         0.5,
-        (0, 0, 0),
+        (255, 255, 255),
         1,
         cv2.LINE_AA,
     )

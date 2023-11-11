@@ -32,6 +32,7 @@ from utils import tlbr_to_cxywh
 def sensitivity_analysis(
     tracker,
     dataset,
+    interval,
     result_path,
     count_thres,
     resized_height=1000,
@@ -40,7 +41,7 @@ def sensitivity_analysis(
     save=False,
     save_counted_tracks_only=True,
 ):
-    fps = dataset.fps
+    # fps = dataset.fps
     width = dataset.width
     height = dataset.height
 
@@ -75,6 +76,10 @@ def sensitivity_analysis(
     frame_id = 0
 
     for frame, bbox_data, sampled_bbox_data, _ in tqdm(dataset, desc="frame", position=0, leave=True):
+        # fps에 따라서 건너뛸지 결정
+        if frame_id % interval != 0:
+            continue
+
         # Run YOLOv8 tracking on the frame, persisting tracks between frames
 
         frame = cv2.cvtColor(np.array(frame), cv2.COLOR_RGB2BGR)
@@ -84,14 +89,14 @@ def sensitivity_analysis(
         boxes = []
         boxes_xyxy = []
         track_ids = []
-        gt_id_track_id_dict = {}
+        # gt_id_track_id_dict = {}
 
         # Draw detected boxes
         for box in sampled_bbox_data.xyxy:
             draw_bbox(resized_frame, box, resize_ratio, (0, 0, 255))
 
         if sampled_bbox_data.size > 0:
-            tracks, gt_id_track_id_dict = tracker.update(sampled_bbox_data)
+            tracks = tracker.update(sampled_bbox_data)
 
             for track in tracks:
                 boxes.append(track[:4].tolist())
@@ -100,6 +105,9 @@ def sensitivity_analysis(
 
         if plot_lost_tracker:
             for lost_strack in tracker.lost_stracks:
+                # track이 화면을 벗어나면 건너뛰기
+                if lost_strack.mean[0] > width or lost_strack.mean[0] < 0:
+                    continue
                 boxes.append(lost_strack.tlbr.tolist())
                 boxes_xyxy.append(None)
                 track_ids.append(lost_strack.track_id)
@@ -151,7 +159,7 @@ def sensitivity_analysis(
         # lost track 표시
         for tracked_track in tracker.lost_stracks:
             track_id = tracked_track.track_id
-            # track이 화면을 벗어나면 건너뛰기
+            # # track이 화면을 벗어나면 건너뛰기
             if tracked_track.mean[0] > width or tracked_track.mean[0] < 0:
                 continue
             # Draw the tracking lines
@@ -164,31 +172,21 @@ def sensitivity_analysis(
         # 추정값의 xywh 구하기
         # gt의 track id와 tracker의 track id 매칭하기
         hypothesis_xywh_points = []
-        for gt_id in sampled_bbox_data.id:
-            gt_id = int(gt_id)
-            # new track은 dict에 없을 것
-            if gt_id in gt_id_track_id_dict:
-                box_xywh = tracks_data[gt_id_track_id_dict[gt_id]]["detections"][-1]["box_xywh"]
-                hypothesis_xywh_points.append(box_xywh)
+        for track_id in track_ids:
+            box_xywh = tracks_data[track_id]["detections"][-1]["box_xywh"]
+            hypothesis_xywh_points.append(box_xywh)
 
-                # Tracker 결과 저장
-                # frame_id, tracker_id, x, y, w, h, conf, x, y, z
-                # x, y, z는 -1
-                if save:
-                    box_xywh_str_list = [
-                        f"{box_xywh[0]:.2f}",
-                        f"{box_xywh[1]:.2f}",
-                        f"{box_xywh[2]:.2f}",
-                        f"{box_xywh[3]:.2f}",
-                    ]
-                    # gt.txt에는 frame_id가 1번부터 시작
-                    # 이 코드에서는 0부터 시작
-                    tracker_result_writer.writerow([frame_id + 1, gt_id] + box_xywh_str_list + [1, -1, -1, -1])
+            # Tracker 결과 저장
+            # frame_id, tracker_id, x, y, w, h, conf, x, y, z
+            # x, y, z는 -1
+            if save:
+                # gt.txt에는 frame_id가 1번부터 시작
+                # 이 코드에서는 0부터 시작하므로 1 더하기
+                tracker_result_writer.writerow([frame_id + 1, int(track_id)] + box_xywh + [1, -1, -1, -1])
 
-        dists = mm.distances.iou_matrix(gt_xywh_points, hypothesis_xywh_points)
+        dists = mm.distances.iou_matrix(gt_xywh_points, hypothesis_xywh_points, max_iou=0.5)
 
-        frameid = acc.update(bbox_data.id, list(gt_id_track_id_dict.keys()), dists)
-        # print(acc.mot_events.loc[frameid])
+        frameid = acc.update(bbox_data.id, track_ids, dists)
 
         # Display count
         display_count(resized_frame, f"Num Trackers: {len(resized_tracks_history)}", (10, 50))
@@ -263,13 +261,16 @@ if __name__ == "__main__":
     # counting(**vars(opt))
 
     random.seed(2023)
+    np.random.seed(2023)
     resized_height = 1000
 
     sensitivity_analysis_data_path = r"D:\DeepLearning\Dataset\Apple\SensitivityAnalysis"
-    tracker_name = "ByteTrack"
+    tracker_name = "MyTracker"
     count_thres = 1 / 4
-    detection_rate = 1
+    detection_rate = 0.2
     fps = 30
+
+    interval = 30 // fps
 
     tracker_config_pathes = {
         "ByteTrack": "configs/bytetrack.yaml",
@@ -291,15 +292,18 @@ if __name__ == "__main__":
     counting_results = {}
 
     for vid_dir in vid_dirs:
-        tracker = tracker_constructors[tracker_name](tracker_config)
+        tracker = tracker_constructors[tracker_name](tracker_config, 1080)
 
-        dataset = SensitivityAnalysisDataset(
-            sensitivity_analysis_data_path, vid_dir, detection_rate=detection_rate, fps=fps
-        )
+        # fps가 바뀌면 good track thresh도 바뀌어야 함
+        if tracker_name == "MyTracker":
+            tracker.good_track_thresh = tracker.good_track_thresh // interval
+
+        dataset = SensitivityAnalysisDataset(sensitivity_analysis_data_path, vid_dir, detection_rate=detection_rate)
 
         num_tracks, num_apples = sensitivity_analysis(
             tracker=tracker,
             dataset=dataset,
+            interval=interval,
             result_path=result_path,
             count_thres=count_thres,
             resized_height=resized_height,
@@ -312,5 +316,3 @@ if __name__ == "__main__":
 
         with open(os.path.join(result_path, "counting_result.json"), "a") as f:
             json.dump(counting_results, f, indent=4)
-
-        break

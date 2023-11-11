@@ -45,9 +45,9 @@ class MyTrack(STrack):
 
     shared_kalman = KalmanFilterXYWH()
 
-    def __init__(self, tlwh, score, cls, gt_id=None):
+    def __init__(self, tlwh, score, cls):
         """Initialize new STrack instance."""
-        super().__init__(tlwh, score, cls, gt_id)
+        super().__init__(tlwh, score, cls)
         self.start_x, self.start_y, _, _ = self.tlwh_to_xywh(tlwh[:-1])
         self.coefficient_matrix = []
         self.num_matched = 0
@@ -235,6 +235,7 @@ class MyTracker:
 
         self.frame_id = 0
         self.args = args
+        self.good_track_thresh = args.good_track_thresh
         self.max_time_lost = int(frame_rate / 30.0 * args.track_buffer)
         self.kalman_filter = self.get_kalmanfilter()
         self.reset_id()
@@ -253,7 +254,6 @@ class MyTracker:
         bboxes = np.concatenate([bboxes, np.arange(len(bboxes)).reshape(-1, 1)], axis=-1)
         cls = results.cls
         gt_ids = results.id
-        gt_id_track_id_dict = {}
 
         remain_inds = scores > self.args.track_high_thresh
         inds_low = scores > self.args.track_low_thresh
@@ -262,20 +262,18 @@ class MyTracker:
             remain_inds = [remain_inds]
             inds_low = [inds_low]
             inds_high = [inds_high]
-        inds_second = np.logical_and(inds_low, inds_high)
+        try:
+            inds_second = np.logical_and(inds_low, inds_high).type(torch.bool)
+        except AttributeError:
+            inds_second = np.logical_and(inds_low, inds_high)
         dets_second = bboxes[inds_second]
         dets = bboxes[remain_inds]
         scores_keep = scores[remain_inds]
         scores_second = scores[inds_second]
         cls_keep = cls[remain_inds]
         cls_second = cls[inds_second]
-        gt_ids_first = None
-        gt_ids_second = None
-        if gt_ids != None:
-            gt_ids_first = gt_ids[remain_inds]
-            gt_ids_second = gt_ids[inds_second]
 
-        detections = self.init_track(dets, scores_keep, cls_keep, gt_ids_first, img)
+        detections = self.init_track(dets, scores_keep, cls_keep, img)
         # Add newly detected tracklets to tracked_stracks
         unconfirmed = []
         tracked_stracks = []  # type: list[STrack]
@@ -306,13 +304,11 @@ class MyTracker:
             if track.state == TrackState.Tracked:
                 track.update(det, self.frame_id)
                 activated_stracks.append(track)
-                gt_id_track_id_dict[det.gt_id] = track.track_id
             else:
                 track.re_activate(det, self.frame_id, new_id=False)
                 refind_stracks.append(track)
-                gt_id_track_id_dict[det.gt_id] = track.track_id
         # Step 3: Second association, with low score detection boxes association the untrack to the low score detections
-        detections_second = self.init_track(dets_second, scores_second, cls_second, gt_ids_second, img)
+        detections_second = self.init_track(dets_second, scores_second, cls_second, img)
         r_tracked_stracks = [strack_pool[i] for i in u_track if strack_pool[i].state == TrackState.Tracked]
         # TODO
         dists = matching.iou_distance(r_tracked_stracks, detections_second)
@@ -323,11 +319,9 @@ class MyTracker:
             if track.state == TrackState.Tracked:
                 track.update(det, self.frame_id)
                 activated_stracks.append(track)
-                gt_id_track_id_dict[det.gt_id] = track.track_id
             else:
                 track.re_activate(det, self.frame_id, new_id=False)
                 refind_stracks.append(track)
-                gt_id_track_id_dict[det.gt_id] = track.track_id
 
         for it in u_track:
             track = r_tracked_stracks[it]
@@ -341,7 +335,7 @@ class MyTracker:
         good_stracks = []
         for track in self.tracked_stracks:
             if track.is_activated:
-                if track.num_matched > self.args.good_track_thresh:
+                if track.num_matched > self.good_track_thresh:
                     stracks_lens[track] = track.num_matched
                 # track_x_len = abs(track.start_x - track.mean[0])
                 # if track_x_len > self.vid_width * self.args.good_track_thresh:
@@ -352,8 +346,6 @@ class MyTracker:
             if len(good_stracks) == self.args.num_good_stracks:
                 break
 
-        print(f"num good stracks: {len(good_stracks)}")
-
         # Deal with unconfirmed tracks, usually tracks with only one beginning frame
         detections = [detections[i] for i in u_detection]
         dists = self.get_dists(unconfirmed, detections)
@@ -361,8 +353,6 @@ class MyTracker:
         for itracked, idet in matches:
             unconfirmed[itracked].update(detections[idet], self.frame_id)
             activated_stracks.append(unconfirmed[itracked])
-            if detections[idet].gt_id not in gt_id_track_id_dict:
-                gt_id_track_id_dict[detections[idet].gt_id] = track.track_id
         for it in u_unconfirmed:
             track = unconfirmed[it]
             # activate threshold 안에 다시 검출된 경우에 activate로 전환
@@ -409,28 +399,18 @@ class MyTracker:
                 track.calc_coefficient_matrix(good_stracks)
 
         # self.good_stracks.extend(good_stracks)
-        return (
-            np.asarray(
-                [x.tlbr.tolist() + [x.track_id, x.score, x.cls, x.idx] for x in self.tracked_stracks if x.is_activated],
-                dtype=np.float32,
-            ),
-            gt_id_track_id_dict,
+        return np.asarray(
+            [x.tlbr.tolist() + [x.track_id, x.score, x.cls, x.idx] for x in self.tracked_stracks if x.is_activated],
+            dtype=np.float32,
         )
 
     def get_kalmanfilter(self):
         """Returns a Kalman filter object for tracking bounding boxes."""
         return KalmanFilterXYWH()
 
-    def init_track(self, dets, scores, cls, gt_ids, img=None):
+    def init_track(self, dets, scores, cls, img=None):
         """Initialize object tracking with detections and scores using STrack algorithm."""
-        if gt_ids == None:
-            return [MyTrack(xyxy, s, c) for (xyxy, s, c) in zip(dets, scores, cls)] if len(dets) else []  # detections
-        else:
-            return (
-                [MyTrack(xyxy, s, c, gt_id.item()) for (xyxy, s, c, gt_id) in zip(dets, scores, cls, gt_ids)]
-                if len(dets)
-                else []
-            )  # detections
+        return [MyTrack(xyxy, s, c) for (xyxy, s, c) in zip(dets, scores, cls)] if len(dets) else []  # detections
 
     # def get_dists(self, tracks, detections):
     #     """Get distances between tracks and detections using IoU and (optionally) ReID embeddings."""

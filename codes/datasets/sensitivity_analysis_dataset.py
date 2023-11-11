@@ -23,41 +23,30 @@ class Boxes:
         self.id = track_id
         self.size = len(self.xyxy)
 
-    def sampling(self, sample_ratio):
-        num_samples = self.size * sample_ratio
-
-        random_idxes = sorted(random.sample(range(self.size), num_samples))
+    def sampling(self, sample_thresh):
+        scores = np.random.uniform(0, 1, self.size)
 
         boxes = []
         conf = []
         cls = []
         track_id = []
-        for random_idx in random_idxes:
-            boxes.append(self.xyxy[random_idx])
-            conf.append(self.conf[random_idx])
-            cls.append(self.cls[random_idx])
-            track_id.append(self.id[random_idx])
+
+        for idx, score in enumerate(scores):
+            if score <= sample_thresh:
+                boxes.append(self.xyxy[idx])
+                conf.append(self.conf[idx])
+                cls.append(self.cls[idx])
+                track_id.append(self.id[idx])
 
         return Boxes(torch.stack(boxes, dim=0), torch.tensor(conf), torch.tensor(cls), torch.tensor(track_id))
 
-        # boxes, conf, cls, track_id = zip(
-        #     *random.sample(list(zip(self.xyxy, self.conf, self.cls, self.id)), num_samples)
-        # )
-
-        # return Boxes(torch.stack(boxes, dim=0), torch.tensor(conf), torch.tensor(cls), torch.tensor(track_id))
-
 
 class SensitivityAnalysisDataset(Dataset):
-    def __init__(self, dataset_path, vid_dir, detection_rate=1, fps=30):
+    def __init__(self, dataset_path, vid_dir, detection_rate=1):
         self.width = 1080
         self.height = 1920
         self.detection_rate = detection_rate
-        self.fps = fps
         self.vid_dir = vid_dir
-
-        base_fps = 30
-        interval = base_fps // fps
-        # fps에 따라서 이미지와 gt 건너뛰는 코드 작성하기
 
         self.img_filelist = glob.glob(os.path.join(dataset_path, vid_dir, "img1/*"))
         self.img_filelist.sort()

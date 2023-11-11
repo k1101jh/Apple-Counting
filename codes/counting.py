@@ -72,7 +72,7 @@ def counting(
             # Run YOLOv8 tracking on the frame, persisting tracks between frames
 
             # results = model.track(frame, persist=True, tracker="configs/bytetrack.yaml", conf=0.1, iou=0.4)
-            results = model.predict(frame, conf=0.05, iou=0.7)
+            results = model.predict(frame, conf=0.05, iou=0.6)
             # results[0].boxes = tracker.update(results[0].boxes.cpu())
             det = results[0].boxes.cpu().numpy()
 
@@ -89,7 +89,7 @@ def counting(
 
             if len(det) > 0:
                 # botsort가 아니면 두 번째 인자인 이미지는 의미 없음
-                tracks, _ = tracker.update(results[0].boxes.cpu(), model.predictor.batch[1])
+                tracks = tracker.update(results[0].boxes.cpu(), model.predictor.batch[1])
                 if len(tracks) > 0:
                     idx = tracks[:, -1].astype(int)
                     results[0] = results[0][idx]
@@ -264,11 +264,11 @@ if __name__ == "__main__":
 
     # vid_file_list = glob.glob(r"D:\DeepLearning\Dataset\RDA apple data\2023-07-26\*\*R.mp4")
     # vid_file_list = glob.glob(r"D:\DeepLearning\Dataset\RDA apple data\2023-08-16\*\*R.mp4")
-    # vid_file_list = glob.glob(r"D:\DeepLearning\Dataset\RDA apple data\2023-10-06\*\*R.mp4")
-    vid_file_list = glob.glob(r"D:\DeepLearning\Dataset\RDA apple data\*\*\*[LR].mp4")
+    vid_file_list = glob.glob(r"D:\DeepLearning\Dataset\RDA apple data\2023-10-06\*\*L.mp4")
+    # vid_file_list = glob.glob(r"D:\DeepLearning\Dataset\RDA apple data\*\*\*[LR].mp4")
 
-    model_path = "detection_checkpoints/yolov8m_RDA_640/weights/best.pt"
-    result_path = f"runs/{task}/{tracker_name}/RDA_640_iou_0.7"
+    model_path = "detection_checkpoints/yolov8m_RDA_800/weights/best.pt"
+    result_path = f"runs/{task}/{tracker_name}/RDA_800_track_buffer_3"
     counting_results = {}
     tracker_config = OmegaConf.load(tracker_config_path)
 
