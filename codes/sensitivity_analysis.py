@@ -17,6 +17,7 @@ from ultralytics_clone.trackers.byte_tracker import BYTETracker
 from ultralytics_clone.trackers.my_tracker import MyTracker
 from ultralytics_clone.trackers.bot_sort import BOTSORT
 from datasets.sensitivity_analysis_dataset import SensitivityAnalysisDataset
+from counter import Counter
 from utils import draw_trajectory
 from utils import draw_bbox
 from utils import compute_color_for_labels
@@ -35,11 +36,11 @@ def sensitivity_analysis(
     interval,
     result_path,
     count_thres,
+    fps,
     resized_height=1000,
     plot_lost_tracker=False,
-    display=False,
+    show=False,
     save=False,
-    save_counted_tracks_only=True,
 ):
     # fps = dataset.fps
     width = dataset.width
@@ -51,12 +52,16 @@ def sensitivity_analysis(
     resize_ratio = resized_height / height
     resized_width = round(width * resize_ratio)
 
-    count_thres_width = resized_width * count_thres
-
-    # Store the track history
-    resized_tracks_history = defaultdict(lambda: [])
-    tracks_data = defaultdict(lambda: {"start_frame": 0, "detections": [], "history": []})
-    counted_track_ids = set()
+    counter = Counter(
+        tracker=tracker,
+        width=width,
+        height=height,
+        resized_height=resized_height,
+        count_thres=count_thres,
+        result_path=result_path,
+        save_name=dataset.vid_dir,
+        plot_lost_tracker=plot_lost_tracker,
+    )
 
     if save:
         # video 저장
@@ -67,10 +72,15 @@ def sensitivity_analysis(
             vid_save_path, cv2.VideoWriter_fourcc(*"mp4v"), fps, (resized_width, resized_height)
         )
 
-        # Tracker 결과 저장
-        tracker_result_path = os.path.join(result_path, dataset.vid_dir + "_tracker_result.txt")
-        tracker_result_file = open(tracker_result_path, "w", newline="")
-        tracker_result_writer = csv.writer(tracker_result_file)
+        # Track 저장
+        tracks_result_path = os.path.join(result_path, dataset.vid_dir + "_tracks_result.txt")
+        tracks_result_file = open(tracks_result_path, "w", newline="")
+        tracks_result_writer = csv.writer(tracks_result_file)
+
+        # Counted Tracks 저장
+        counted_tracks_result_path = os.path.join(result_path, dataset.vid_dir + "_counted_tracks_result.txt")
+        counted_tracks_result_file = open(counted_tracks_result_path, "w", newline="")
+        counted_tracks_result_writer = csv.writer(counted_tracks_result_file)
 
     # Loop through the video frames
     frame_id = 0
@@ -81,90 +91,9 @@ def sensitivity_analysis(
             continue
 
         # Run YOLOv8 tracking on the frame, persisting tracks between frames
-
         frame = cv2.cvtColor(np.array(frame), cv2.COLOR_RGB2BGR)
-        resized_frame = cv2.resize(frame, dsize=(resized_width, resized_height), interpolation=cv2.INTER_CUBIC)
 
-        # Get the boxes and track IDs
-        boxes = []
-        boxes_xyxy = []
-        track_ids = []
-        # gt_id_track_id_dict = {}
-
-        # Draw detected boxes
-        for box in sampled_bbox_data.xyxy:
-            draw_bbox(resized_frame, box, resize_ratio, (0, 0, 255))
-
-        if sampled_bbox_data.size > 0:
-            tracks = tracker.update(sampled_bbox_data)
-
-            for track in tracks:
-                boxes.append(track[:4].tolist())
-                boxes_xyxy.append(track[:4].tolist())
-                track_ids.append(track[4])
-
-        if plot_lost_tracker:
-            for lost_strack in tracker.lost_stracks:
-                # track이 화면을 벗어나면 건너뛰기
-                if lost_strack.mean[0] > width or lost_strack.mean[0] < 0:
-                    continue
-                boxes.append(lost_strack.tlbr.tolist())
-                boxes_xyxy.append(None)
-                track_ids.append(lost_strack.track_id)
-
-        # Plot the tracks
-        for box, box_xyxy, track_id in zip(boxes, boxes_xyxy, track_ids):
-            cxywh = tlbr_to_cxywh(box)
-            cx, cy, w, h = cxywh
-            track_id = int(track_id)
-
-            # 원본 트랙 저장
-            tracks_data[track_id]["history"].append((float(cx), float(cy)))
-
-            # resize된 트랙 저장
-            track = resized_tracks_history[track_id]
-            track.append((float(cx * resize_ratio), float(cy * resize_ratio)))  # x, y center point
-
-            if len(track) == 1:
-                tracks_data[track_id]["start_frame"] = frame_id
-
-            color = compute_color_for_labels(track_id)
-
-            # box 저장
-            tracks_data[track_id]["detections"].append(
-                {
-                    "frame_id": frame_id,
-                    "box_xywh": tlbr_to_xywh(box),
-                    "box_xyxy": box_xyxy,
-                }
-            )
-
-            # Draw the box
-            # print(box_xyxy)
-            if box_xyxy:
-                draw_bbox(resized_frame, box_xyxy, resize_ratio, color)
-
-        # activated track 표시
-        for tracked_track in [x for x in tracker.tracked_stracks if x.is_activated]:
-            track_id = tracked_track.track_id
-            # Draw the tracking lines
-            track_history = resized_tracks_history[track_id]
-            # track의 길이로 count할지 결정
-            if track_id not in counted_track_ids:
-                if abs(track_history[-1][0] - track_history[0][0]) > count_thres_width:
-                    counted_track_ids.add(track_id)
-
-            draw_trajectory(resized_frame, track_history, track_id)
-
-        # lost track 표시
-        for tracked_track in tracker.lost_stracks:
-            track_id = tracked_track.track_id
-            # # track이 화면을 벗어나면 건너뛰기
-            if tracked_track.mean[0] > width or tracked_track.mean[0] < 0:
-                continue
-            # Draw the tracking lines
-            track_history = resized_tracks_history[track_id]
-            draw_trajectory(resized_frame, track_history, track_id)
+        resized_frame, tracks_data, track_ids = counter.update(frame, sampled_bbox_data)
 
         ## Metric 계산
         gt_xywh_points = [xyxy_to_xywh(bbox) for bbox in bbox_data.xyxy]
@@ -173,7 +102,7 @@ def sensitivity_analysis(
         # gt의 track id와 tracker의 track id 매칭하기
         hypothesis_xywh_points = []
         for track_id in track_ids:
-            box_xywh = tracks_data[track_id]["detections"][-1]["box_xywh"]
+            box_xywh = xyxy_to_xywh(tracks_data[track_id]["boxes"][-1]["box_xyxy"])
             hypothesis_xywh_points.append(box_xywh)
 
             # Tracker 결과 저장
@@ -182,18 +111,13 @@ def sensitivity_analysis(
             if save:
                 # gt.txt에는 frame_id가 1번부터 시작
                 # 이 코드에서는 0부터 시작하므로 1 더하기
-                tracker_result_writer.writerow([frame_id + 1, int(track_id)] + box_xywh + [1, -1, -1, -1])
+                tracks_result_writer.writerow([counter.frame_id, int(track_id)] + box_xywh + [1, -1, -1, -1])
 
         dists = mm.distances.iou_matrix(gt_xywh_points, hypothesis_xywh_points, max_iou=0.5)
-
         frameid = acc.update(bbox_data.id, track_ids, dists)
 
-        # Display count
-        display_count(resized_frame, f"Num Trackers: {len(resized_tracks_history)}", (10, 50))
-        display_count(resized_frame, f"Num Apples: {len(counted_track_ids)}", (10, 100))
-
         # Display the annotated frame
-        if display:
+        if show:
             cv2.imshow("YOLOv8 Tracking", resized_frame)
 
             # Break the loop if 'q' is pressed
@@ -202,41 +126,35 @@ def sensitivity_analysis(
         if save:
             vid_writer.write(resized_frame)
 
-        frame_id += 1
+    num_tracks = counter.get_num_tracks()
+    num_apples = counter.get_num_counted_tracks()
 
-    print(f"Num Trackers: {len(resized_tracks_history)}")
-    print(f"Num Apples: {len(counted_track_ids)}")
+    print(f"Num Trackers: {num_tracks}")
+    print(f"Num Apples: {num_apples}")
 
     # Release the video capture object and close the display window
     cv2.destroyAllWindows()
 
     if save:
-        txt_save_path = os.path.join(result_path, dataset.vid_dir + ".txt")
-        with open(txt_save_path, "w") as f:
-            f.write(f"Num Trackers: {len(resized_tracks_history)}\n")
-            f.write(f"Num Apples: {len(counted_track_ids)}")
+        counter.save()
 
-        # count한 궤적 정보 저장
-        if save_counted_tracks_only:
-            counted_tracks_history = defaultdict(lambda: [])
-            start_frames = [[] for x in range(frame_id)]
-            detections = [[] for x in range(frame_id)]
-            for track_id in counted_track_ids:
-                counted_tracks_history[track_id] = tracks_data[track_id]["history"]
-                start_frames[tracks_data[track_id]["start_frame"]].append(track_id)
-                for detection in tracks_data[track_id]["detections"]:
-                    detections[detection["frame_id"]].append({"track_id": track_id, "box_xyxy": detection["box_xyxy"]})
+        # counted tracks만 저장
+        counted_tracks_result = defaultdict(lambda: [])
 
-            dict_to_save = {
-                "history": counted_tracks_history,
-                "start_frames": start_frames,
-                "detections": detections,
-            }
+        for track_id in counter.counted_track_ids:
+            for boxes in tracks_data[track_id]["boxes"]:
+                counted_tracks_result[boxes["frame_id"]].append(
+                    {"track_id": track_id, "box_xywh": xyxy_to_xywh(boxes["box_xyxy"])}
+                )
 
-            with open(os.path.join(result_path, dataset.vid_dir + "_counted_tracks_info.json"), "w") as f:
-                json.dump(dict_to_save, f, indent=4)
+        for frame_id in range(1, counter.frame_id + 1):
+            for track_data in counted_tracks_result[frame_id]:
+                track_id = int(track_data["track_id"])
+                box_xywh = track_data["box_xywh"]
+                counted_tracks_result_writer.writerow([frame_id, track_id] + box_xywh + [1, -1, -1, -1])
 
-        tracker_result_file.close()
+        tracks_result_file.close()
+        counted_tracks_result_file.close()
 
     # Metric 계산
     mh = mm.metrics.create()
@@ -244,9 +162,9 @@ def sensitivity_analysis(
 
     strsummary = mm.io.render_summary(summary, formatters=mh.formatters, namemap=mm.io.motchallenge_metric_names)
     print(strsummary)
-    summary.to_csv(os.path.join(result_path, os.path.splitext(vid_filename)[0] + "_summary.csv"))
+    summary.to_json(os.path.join(result_path, dataset.vid_dir + "_metrics.json"))
 
-    return len(resized_tracks_history), len(counted_track_ids)
+    return num_tracks, num_apples
 
 
 def parse_opt():
@@ -260,16 +178,15 @@ if __name__ == "__main__":
     opt = parse_opt()
     # counting(**vars(opt))
 
-    random.seed(2023)
-    np.random.seed(2023)
     resized_height = 1000
+    seed = 2023
 
     sensitivity_analysis_data_path = r"D:\DeepLearning\Dataset\Apple\SensitivityAnalysis"
-    tracker_name = "MyTracker"
+    tracker_name = "ByteTrack"
     count_thres = 1 / 4
-    detection_rate = 0.2
-    fps = 30
 
+    detection_rates = [0.2, 0.4, 0.6, 0.8, 1]
+    fps = 30
     interval = 30 // fps
 
     tracker_config_pathes = {
@@ -287,32 +204,38 @@ if __name__ == "__main__":
     tracker_config_path = tracker_config_pathes[tracker_name]
     tracker_config = OmegaConf.load(tracker_config_path)
 
-    result_path = f"runs/sensitivity_analysis/{tracker_name}_dr_{detection_rate}_fps_{fps}"
-    vid_dirs = os.listdir(sensitivity_analysis_data_path)
-    counting_results = {}
+    for detection_rate in detection_rates:
+        random.seed(seed)
+        np.random.seed(seed)
 
-    for vid_dir in vid_dirs:
-        tracker = tracker_constructors[tracker_name](tracker_config, 1080)
+        result_path = f"runs/sensitivity_analysis/{tracker_name}_dr_{detection_rate}_fps_{fps}_seed_{seed}"
+        vid_dirs = os.listdir(sensitivity_analysis_data_path)
+        counting_results = {}
 
-        # fps가 바뀌면 good track thresh도 바뀌어야 함
-        if tracker_name == "MyTracker":
-            tracker.good_track_thresh = tracker.good_track_thresh // interval
+        for vid_dir in vid_dirs:
+            tracker = tracker_constructors[tracker_name](tracker_config)
 
-        dataset = SensitivityAnalysisDataset(sensitivity_analysis_data_path, vid_dir, detection_rate=detection_rate)
+            # fps가 바뀌면 good track thresh도 바뀌어야 함
+            if tracker_name == "MyTracker":
+                tracker.good_track_thresh = tracker.good_track_thresh // interval
 
-        num_tracks, num_apples = sensitivity_analysis(
-            tracker=tracker,
-            dataset=dataset,
-            interval=interval,
-            result_path=result_path,
-            count_thres=count_thres,
-            resized_height=resized_height,
-            plot_lost_tracker=True,
-            display=False,
-            save=True,
-            save_counted_tracks_only=True,
-        )
-        counting_results[vid_dir] = {"num_tracks": num_tracks, "num_apples": num_apples}
+            dataset = SensitivityAnalysisDataset(
+                sensitivity_analysis_data_path, vid_dir, detection_thres=detection_rate
+            )
 
-        with open(os.path.join(result_path, "counting_result.json"), "a") as f:
-            json.dump(counting_results, f, indent=4)
+            num_tracks, num_apples = sensitivity_analysis(
+                tracker=tracker,
+                dataset=dataset,
+                interval=interval,
+                result_path=result_path,
+                count_thres=count_thres,
+                fps=fps,
+                resized_height=resized_height,
+                plot_lost_tracker=True,
+                show=False,
+                save=True,
+            )
+            counting_results[vid_dir] = {"num_tracks": num_tracks, "num_apples": num_apples}
+
+            with open(os.path.join(result_path, "counting_result.json"), "a") as f:
+                json.dump(counting_results, f, indent=4)

@@ -50,14 +50,14 @@ def visualize_counted_tracks(vid_path, tracks_info_path, result_path, count_thre
 
             for box_info in detections[frame_id]:
                 track_id = box_info["track_id"]
-                box_xyxy = box_info["box_xyxy"]
+                detection_xyxy = box_info["detection_xyxy"]
 
                 # counted track에 해당하는 bbox만 표시
                 color = compute_color_for_labels(track_id)
 
                 # Draw the box
-                if box_xyxy:
-                    draw_bbox(resized_frame, box_xyxy, resize_ratio, color)
+                if detection_xyxy:
+                    draw_bbox(resized_frame, detection_xyxy, resize_ratio, color)
 
             # activated track 표시
             terminated_track_list_idxes = []
@@ -113,23 +113,23 @@ def visualize_counted_tracks(vid_path, tracks_info_path, result_path, count_thre
 
 
 if __name__ == "__main__":
-    source_dir = "runs/tracking/MyTracker/RDA_640"
+    source_dir = "runs/tracking/MyTracker/RDA_800_track_buffer_3"
 
     source_vid_dir = r"D:/DeepLearning/Dataset/RDA apple data/*"
 
     filenames = [
-        "230726-Cam1-Line07-L.mp4",
-        "230726-Cam1-Line10-L.mp4",
-        "230726-Cam1-Line11-L.mp4",
-        "230726-Cam1-Line14-L.mp4",
-        "230726-Cam1-Line15-L.mp4",
-        "230726-Cam1-Line18-L.mp4",
-        "230816-Cam1-Line07-L.mp4",
-        "230816-Cam1-Line10-L.mp4",
-        "230816-Cam1-Line11-L.mp4",
-        "230816-Cam1-Line14-L.mp4",
-        "230816-Cam1-Line15-L.mp4",
-        "230816-Cam1-Line18-L.mp4",
+        # "230726-Cam1-Line07-L.mp4",
+        # "230726-Cam1-Line10-L.mp4",
+        # "230726-Cam1-Line11-L.mp4",
+        # "230726-Cam1-Line14-L.mp4",
+        # "230726-Cam1-Line15-L.mp4",
+        # "230726-Cam1-Line18-L.mp4",
+        # "230816-Cam1-Line07-L.mp4",
+        # "230816-Cam1-Line10-L.mp4",
+        # "230816-Cam1-Line11-L.mp4",
+        # "230816-Cam1-Line14-L.mp4",
+        # "230816-Cam1-Line15-L.mp4",
+        # "230816-Cam1-Line18-L.mp4",
         "231006-Cam1-Line07-L.mp4",
         "231006-Cam1-Line11-L.mp4",
         "231006-Cam1-Line15-L.mp4",

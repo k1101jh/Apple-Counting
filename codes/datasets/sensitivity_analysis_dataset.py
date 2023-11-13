@@ -23,7 +23,10 @@ class Boxes:
         self.id = track_id
         self.size = len(self.xyxy)
 
-    def sampling(self, sample_thresh):
+    def __len__(self):
+        return self.size
+
+    def sampling(self, detection_thres):
         scores = np.random.uniform(0, 1, self.size)
 
         boxes = []
@@ -31,21 +34,26 @@ class Boxes:
         cls = []
         track_id = []
 
+        num_detections = 0
         for idx, score in enumerate(scores):
-            if score <= sample_thresh:
+            if score <= detection_thres:
                 boxes.append(self.xyxy[idx])
                 conf.append(self.conf[idx])
                 cls.append(self.cls[idx])
                 track_id.append(self.id[idx])
+                num_detections += 1
 
-        return Boxes(torch.stack(boxes, dim=0), torch.tensor(conf), torch.tensor(cls), torch.tensor(track_id))
+        if num_detections > 0:
+            return Boxes(torch.stack(boxes, dim=0), torch.tensor(conf), torch.tensor(cls), torch.tensor(track_id))
+        else:
+            return Boxes([], [], [], [])
 
 
 class SensitivityAnalysisDataset(Dataset):
-    def __init__(self, dataset_path, vid_dir, detection_rate=1):
+    def __init__(self, dataset_path, vid_dir, detection_thres=1):
         self.width = 1080
         self.height = 1920
-        self.detection_rate = detection_rate
+        self.detection_thres = detection_thres
         self.vid_dir = vid_dir
 
         self.img_filelist = glob.glob(os.path.join(dataset_path, vid_dir, "img1/*"))
@@ -98,6 +106,6 @@ class SensitivityAnalysisDataset(Dataset):
         image = Image.open(self.img_filelist[idx])
         image = ImageOps.exif_transpose(image)
         bbox_data = self.frame_datas[idx]
-        sampled_bbox_data = bbox_data.sampling(self.detection_rate)
+        sampled_bbox_data = bbox_data.sampling(self.detection_thres)
 
         return [image, bbox_data, sampled_bbox_data, self.img_filelist[idx]]
