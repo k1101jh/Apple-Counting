@@ -58,7 +58,8 @@ class Counter:
         # Get the boxes and track IDs
         boxes_xyxy = []
         detections_xyxy = []
-        track_ids = []
+        activated_track_ids = []
+        lost_track_ids = []
 
         # Draw detected boxes
         for box_xyxy in bbox.xyxy:
@@ -71,21 +72,21 @@ class Counter:
             for track in tracks:
                 boxes_xyxy.append(track[:4].tolist())
                 detections_xyxy.append(track[:4].tolist())
-                track_ids.append(track[4])
+                activated_track_ids.append(track[4])
 
         if self.plot_lost_tracker:
             for lost_strack in self.tracker.lost_stracks:
-                # if lost_strack.mean[0] > self.width or lost_strack.mean[0] < 0:
-                #     continue
                 boxes_xyxy.append(lost_strack.tlbr.tolist())
                 detections_xyxy.append(None)
-                track_ids.append(lost_strack.track_id)
+                lost_track_ids.append(lost_strack.track_id)
 
         # Visualize the results on the frame
         # annotated_frame = results[0].plot()
 
         # Plot the tracks
-        for box_xyxy, detection_xyxy, track_id in zip(boxes_xyxy, detections_xyxy, track_ids):
+        for box_xyxy, detection_xyxy, track_id in zip(
+            boxes_xyxy, detections_xyxy, activated_track_ids + lost_track_ids
+        ):
             cxywh = tlbr_to_cxywh(box_xyxy)
             cx, cy, w, h = cxywh
 
@@ -142,7 +143,7 @@ class Counter:
 
         self.frame_id += 1
 
-        return resized_frame, self.tracks_data, track_ids
+        return resized_frame, self.tracks_data, activated_track_ids
 
     def get_num_tracks(self):
         return len(self.resized_tracks_history)

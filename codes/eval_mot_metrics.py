@@ -93,7 +93,7 @@ if __name__ == "__main__":
 
     # 모든 파일 성능 확인
 
-    tracker_name = "ByteTrack"
+    tracker_name = "MyTracker"
     detection_rate = "1"
     fps = 30
 

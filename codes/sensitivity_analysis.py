@@ -93,7 +93,7 @@ def sensitivity_analysis(
         # Run YOLOv8 tracking on the frame, persisting tracks between frames
         frame = cv2.cvtColor(np.array(frame), cv2.COLOR_RGB2BGR)
 
-        resized_frame, tracks_data, track_ids = counter.update(frame, sampled_bbox_data)
+        resized_frame, tracks_data, activated_track_ids = counter.update(frame, sampled_bbox_data)
 
         ## Metric 계산
         gt_xywh_points = [xyxy_to_xywh(bbox) for bbox in bbox_data.xyxy]
@@ -101,8 +101,9 @@ def sensitivity_analysis(
         # 추정값의 xywh 구하기
         # gt의 track id와 tracker의 track id 매칭하기
         hypothesis_xywh_points = []
-        for track_id in track_ids:
-            box_xywh = xyxy_to_xywh(tracks_data[track_id]["boxes"][-1]["box_xyxy"])
+        for track_id in activated_track_ids:
+            detection_xyxy = tracks_data[track_id]["boxes"][-1]["detection_xyxy"]
+            box_xywh = xyxy_to_xywh(detection_xyxy)
             hypothesis_xywh_points.append(box_xywh)
 
             # Tracker 결과 저장
@@ -114,7 +115,7 @@ def sensitivity_analysis(
                 tracks_result_writer.writerow([counter.frame_id, int(track_id)] + box_xywh + [1, -1, -1, -1])
 
         dists = mm.distances.iou_matrix(gt_xywh_points, hypothesis_xywh_points, max_iou=0.5)
-        frameid = acc.update(bbox_data.id, track_ids, dists)
+        frameid = acc.update(bbox_data.id, activated_track_ids, dists)
 
         # Display the annotated frame
         if show:
@@ -179,10 +180,10 @@ if __name__ == "__main__":
     # counting(**vars(opt))
 
     resized_height = 1000
-    seed = 2023
+    seed = 2024
 
     sensitivity_analysis_data_path = r"D:\DeepLearning\Dataset\Apple\SensitivityAnalysis"
-    tracker_name = "ByteTrack"
+    tracker_name = "MyTracker"
     count_thres = 1 / 4
 
     detection_rates = [0.2, 0.4, 0.6, 0.8, 1]

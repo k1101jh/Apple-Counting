@@ -112,7 +112,7 @@ if __name__ == "__main__":
     # counting(**vars(opt))
 
     task = "tracking"
-    tracker_name = "MyTracker"
+    tracker_name = "ByteTrack"
     count_thres = 1 / 4
     resized_height = 1000
 
@@ -148,8 +148,8 @@ if __name__ == "__main__":
 
     # vid_file_list = glob.glob(r"D:\DeepLearning\Dataset\RDA apple data\2023-07-26\*\*R.mp4")
     # vid_file_list = glob.glob(r"D:\DeepLearning\Dataset\RDA apple data\2023-08-16\*\*R.mp4")
-    vid_file_list = glob.glob(r"D:\DeepLearning\Dataset\RDA apple data\2023-10-06\*\*L.mp4")
-    # vid_file_list = glob.glob(r"D:\DeepLearning\Dataset\RDA apple data\*\*\*[LR].mp4")
+    # vid_file_list = glob.glob(r"D:\DeepLearning\Dataset\RDA apple data\2023-10-06\*\*L.mp4")
+    vid_file_list = glob.glob(r"D:\DeepLearning\Dataset\RDA apple data\*\*\*[LR].mp4")
 
     model_path = "detection_checkpoints/yolov8m_RDA_800/weights/best.pt"
     result_path = f"runs/{task}/{tracker_name}/RDA_800_final"
