@@ -88,6 +88,7 @@ def sensitivity_analysis(
     for frame, bbox_data, sampled_bbox_data, _ in tqdm(dataset, desc="frame", position=0, leave=True):
         # fps에 따라서 건너뛸지 결정
         if frame_id % interval != 0:
+            frame_id += 1
             continue
 
         # Run YOLOv8 tracking on the frame, persisting tracks between frames
@@ -127,6 +128,8 @@ def sensitivity_analysis(
         if save:
             vid_writer.write(resized_frame)
 
+        frame_id += 1
+
     num_tracks = counter.get_num_tracks()
     num_apples = counter.get_num_counted_tracks()
 
@@ -144,9 +147,11 @@ def sensitivity_analysis(
 
         for track_id in counter.counted_track_ids:
             for boxes in tracks_data[track_id]["boxes"]:
-                counted_tracks_result[boxes["frame_id"]].append(
-                    {"track_id": track_id, "box_xywh": xyxy_to_xywh(boxes["box_xyxy"])}
-                )
+                detection_xyxy = boxes["detection_xyxy"]
+                if detection_xyxy != None:
+                    counted_tracks_result[boxes["frame_id"]].append(
+                        {"track_id": track_id, "box_xywh": xyxy_to_xywh(detection_xyxy)}
+                    )
 
         for frame_id in range(1, counter.frame_id + 1):
             for track_data in counted_tracks_result[frame_id]:
@@ -180,15 +185,11 @@ if __name__ == "__main__":
     # counting(**vars(opt))
 
     resized_height = 1000
-    seed = 2024
+    seed = 2023
 
     sensitivity_analysis_data_path = r"D:\DeepLearning\Dataset\Apple\SensitivityAnalysis"
-    tracker_name = "MyTracker"
+    tracker_name = "ByteTrack"
     count_thres = 1 / 4
-
-    detection_rates = [0.2, 0.4, 0.6, 0.8, 1]
-    fps = 30
-    interval = 30 // fps
 
     tracker_config_pathes = {
         "ByteTrack": "configs/bytetrack.yaml",
@@ -202,41 +203,46 @@ if __name__ == "__main__":
         "MyTracker": MyTracker,
     }
 
+    detection_rates = [1, 0.8, 0.6, 0.4, 0.2]
+    fps_list = [30]
+
     tracker_config_path = tracker_config_pathes[tracker_name]
     tracker_config = OmegaConf.load(tracker_config_path)
 
-    for detection_rate in detection_rates:
-        random.seed(seed)
-        np.random.seed(seed)
+    for fps in fps_list:
+        interval = 30 // fps
+        for detection_rate in detection_rates:
+            random.seed(seed)
+            np.random.seed(seed)
 
-        result_path = f"runs/sensitivity_analysis/{tracker_name}_dr_{detection_rate}_fps_{fps}_seed_{seed}"
-        vid_dirs = os.listdir(sensitivity_analysis_data_path)
-        counting_results = {}
+            result_path = f"runs/sensitivity_analysis/{tracker_name}_dr_{detection_rate}_fps_{fps}"
+            vid_dirs = os.listdir(sensitivity_analysis_data_path)
+            counting_results = {}
 
-        for vid_dir in vid_dirs:
-            tracker = tracker_constructors[tracker_name](tracker_config)
+            for vid_dir in vid_dirs:
+                tracker = tracker_constructors[tracker_name](tracker_config, frame_rate=fps)
 
-            # fps가 바뀌면 good track thresh도 바뀌어야 함
-            if tracker_name == "MyTracker":
-                tracker.good_track_thresh = tracker.good_track_thresh // interval
+                # fps가 바뀌면 good track thresh도 바뀌어야 함
+                if tracker_name == "MyTracker":
+                    tracker.good_track_thresh = tracker.good_track_thresh // interval
 
-            dataset = SensitivityAnalysisDataset(
-                sensitivity_analysis_data_path, vid_dir, detection_thres=detection_rate
-            )
+                dataset = SensitivityAnalysisDataset(
+                    sensitivity_analysis_data_path, vid_dir, detection_thres=detection_rate
+                )
 
-            num_tracks, num_apples = sensitivity_analysis(
-                tracker=tracker,
-                dataset=dataset,
-                interval=interval,
-                result_path=result_path,
-                count_thres=count_thres,
-                fps=fps,
-                resized_height=resized_height,
-                plot_lost_tracker=True,
-                show=False,
-                save=True,
-            )
-            counting_results[vid_dir] = {"num_tracks": num_tracks, "num_apples": num_apples}
+                num_tracks, num_apples = sensitivity_analysis(
+                    tracker=tracker,
+                    dataset=dataset,
+                    interval=interval,
+                    result_path=result_path,
+                    count_thres=count_thres,
+                    fps=fps,
+                    resized_height=resized_height,
+                    plot_lost_tracker=True,
+                    show=False,
+                    save=True,
+                )
+                counting_results[vid_dir] = {"num_tracks": num_tracks, "num_apples": num_apples}
 
-            with open(os.path.join(result_path, "counting_result.json"), "a") as f:
-                json.dump(counting_results, f, indent=4)
+                with open(os.path.join(result_path, "counting_result.json"), "a") as f:
+                    json.dump(counting_results, f, indent=4)

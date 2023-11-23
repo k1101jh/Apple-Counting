@@ -3,6 +3,7 @@
 # import required packages
 import os
 import glob
+import csv
 import logging
 import motmetrics as mm
 import numpy as np
@@ -85,6 +86,27 @@ def motMetrics(gtfiles, tsfiles):
     logging.info("Completed")
 
 
+def generate_gt_with_fps(original_gt_files, dest_dir, fps):
+    interval = 30 // fps
+
+    for i, original_gt_file in enumerate(original_gt_files):
+        dest_path = os.path.join(dest_dir, f"{i + 1}.txt")
+        with open(original_gt_file, "r") as original_f:
+            gt_lines = original_f.readlines()
+
+        result_file = open(dest_path, "w", newline="")
+        result_writer = csv.writer(result_file)
+
+        for gt_line in gt_lines:
+            cur_frame_id = gt_line.split(",")[0]
+            box_info = gt_line.split(",")[1:]
+            box_info[-1] = float(box_info[-1])
+            if (int(cur_frame_id) - 1) % interval != 0:
+                continue
+            result_writer.writerow([(int(cur_frame_id) - 1) // interval + 1] + box_info)
+        result_file.close()
+
+
 if __name__ == "__main__":
     # vid_dir = "1"
     # gt_source_path = rf"D:\DeepLearning\Dataset\Apple\SensitivityAnalysis\{vid_dir}\gt\gt.txt"
@@ -93,11 +115,17 @@ if __name__ == "__main__":
 
     # 모든 파일 성능 확인
 
-    tracker_name = "MyTracker"
-    detection_rate = "1"
+    tracker_name = "ByteTrack"
+    detection_rate = "0.8"
     fps = 30
 
-    gt_files = glob.glob(r"D:\DeepLearning\Experiment\Multi Object Tracking\TrackEval\data\gt\*.txt")
+    gt_dir = rf"D:\DeepLearning\Experiment\Multi Object Tracking\TrackEval\data\gt_fps_{fps}"
+    if not os.path.exists(gt_dir):
+        os.makedirs(gt_dir)
+        original_gt_files = glob.glob(r"D:\DeepLearning\Dataset\Apple\SensitivityAnalysis\*\gt\gt.txt")
+        generate_gt_with_fps(original_gt_files=original_gt_files, dest_dir=gt_dir, fps=fps)
+
+    gt_files = glob.glob(os.path.join(gt_dir, "*.txt"))
     ts_files = glob.glob(
         rf"D:\DeepLearning\Experiment\Multi Object Tracking\Apple-Counting\runs\sensitivity_analysis\{tracker_name}_dr_{detection_rate}_fps_{fps}\*_tracks_result.txt"
     )

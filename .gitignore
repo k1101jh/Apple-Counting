@@ -4,6 +4,8 @@
 /runs/
 /detection_checkpoints/
 /merged_vids/
+crop_image.py
+draw_plot.py
 
 ### Python ###
 # Byte-compiled / optimized / DLL files

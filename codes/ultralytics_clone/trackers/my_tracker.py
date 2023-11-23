@@ -356,7 +356,7 @@ class MyTracker:
         for it in u_unconfirmed:
             track = unconfirmed[it]
             # activate threshold 안에 다시 검출된 경우에 activate로 전환
-            if self.frame_id - track.start_frame >= self.args.activate_thresh:
+            if self.frame_id - track.start_frame > self.args.activate_thresh:
                 track.mark_removed()
                 removed_stracks.append(track)
             # else:
