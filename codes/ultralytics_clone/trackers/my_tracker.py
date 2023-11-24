@@ -2,6 +2,7 @@
 
 import torch
 import numpy as np
+from itertools import compress
 
 from .basetrack import BaseTrack, TrackState
 from .byte_tracker import BYTETracker, STrack
@@ -258,20 +259,14 @@ class MyTracker:
         remain_inds = scores > self.args.track_high_thresh
         inds_low = scores > self.args.track_low_thresh
         inds_high = scores < self.args.track_high_thresh
-        if len(scores) == 1:
-            remain_inds = [remain_inds]
-            inds_low = [inds_low]
-            inds_high = [inds_high]
-        try:
-            inds_second = np.logical_and(inds_low, inds_high).type(torch.bool)
-        except AttributeError:
-            inds_second = np.logical_and(inds_low, inds_high)
-        dets_second = bboxes[inds_second]
-        dets = bboxes[remain_inds]
-        scores_keep = scores[remain_inds]
-        scores_second = scores[inds_second]
-        cls_keep = cls[remain_inds]
-        cls_second = cls[inds_second]
+
+        inds_second = np.logical_and(inds_low, inds_high, dtype=bool).type(torch.bool)
+        dets_second = list(compress(bboxes, inds_second))
+        dets = list(compress(bboxes, remain_inds))
+        scores_keep = list(compress(scores, remain_inds))
+        scores_second = list(compress(scores, inds_second))
+        cls_keep = list(compress(cls, remain_inds))
+        cls_second = list(compress(cls, inds_second))
 
         detections = self.init_track(dets, scores_keep, cls_keep, img)
         # Add newly detected tracklets to tracked_stracks
