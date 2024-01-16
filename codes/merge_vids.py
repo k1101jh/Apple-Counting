@@ -69,23 +69,24 @@ def merge_vids(vid_paths: list[str], captions: list[str], result_path):
 
 
 if __name__ == "__main__":
-    result_dir = "merged_vids/counting/ByteTrack_MyTracker"
+    result_dir = "merged_vids/counting/ByteTrack_max_age"
     os.makedirs(result_dir, exist_ok=True)
 
     source_vids = [
         "runs/tracking/ByteTrack/RDA_800",
-        "runs/tracking/MyTracker/RDA_800_vx",
+        "runs/tracking/ByteTrack/RDA_800_final_with_active_thresh_3",
     ]
 
-    captions = ["ByteTrack", "Proposed Tracker"]
+    captions = ["max age 60", "max age 30"]
 
     filenames = [
-        "231006-Cam1-Line07-L.mp4",
-        "231006-Cam1-Line11-L.mp4",
-        "231006-Cam1-Line15-L.mp4",
-        "231006-Cam1-Line07-L_counted_tracks.mp4",
-        "231006-Cam1-Line11-L_counted_tracks.mp4",
-        "231006-Cam1-Line15-L_counted_tracks.mp4",
+        "230816-Cam1-Line10-L_counted_tracks.mp4"
+        # "231006-Cam1-Line07-L.mp4",
+        # "231006-Cam1-Line11-L.mp4",
+        # "231006-Cam1-Line15-L.mp4",
+        # "231006-Cam1-Line07-L_counted_tracks.mp4",
+        # "231006-Cam1-Line11-L_counted_tracks.mp4",
+        # "231006-Cam1-Line15-L_counted_tracks.mp4",
     ]
 
     for filename in tqdm(filenames, desc="vid_num", position=0, leave=True):

@@ -30,6 +30,7 @@ class Counter:
         result_path,
         save_name,
         plot_lost_tracker=True,
+        plot_bbox_conf_thres=0.05,
     ):
         self.tracker = tracker
         self.width = width
@@ -37,6 +38,7 @@ class Counter:
         self.result_path = result_path
         self.save_name = save_name
         self.plot_lost_tracker = plot_lost_tracker
+        self.plot_bbox_conf_thres = plot_bbox_conf_thres
 
         self.resize_ratio = resized_height / height
         self.resized_width = round(width * self.resize_ratio)
@@ -62,8 +64,9 @@ class Counter:
         lost_track_ids = []
 
         # Draw detected boxes
-        for box_xyxy in bbox.xyxy:
-            draw_bbox(resized_frame, box_xyxy, self.resize_ratio, (0, 0, 255))
+        for box_xyxy, conf in zip(bbox.xyxy, bbox.conf):
+            if conf >= self.plot_bbox_conf_thres:
+                draw_bbox(resized_frame, box_xyxy, self.resize_ratio, (0, 0, 255))
 
         if len(bbox) > 0:
             # botsort가 아니면 두 번째 인자인 이미지는 의미 없음
@@ -138,8 +141,8 @@ class Counter:
             draw_trajectory(resized_frame, track_history, track_id)
 
         # Display count
-        display_count(resized_frame, f"Num Trackers: {len(self.resized_tracks_history)}", (10, 50))
-        display_count(resized_frame, f"Num Apples: {len(self.counted_track_ids)}", (10, 100))
+        # display_count(resized_frame, f"Num Trackers: {len(self.resized_tracks_history)}", (10, 50))
+        # display_count(resized_frame, f"Num Apples: {len(self.counted_track_ids)}", (10, 100))
 
         self.frame_id += 1
 

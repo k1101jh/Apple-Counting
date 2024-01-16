@@ -114,10 +114,9 @@ if __name__ == "__main__":
     # motMetricsEnhancedCalculator(gt_source_path, t_source_path)
 
     # 모든 파일 성능 확인
-
-    tracker_name = "ByteTrack"
-    detection_rate = "0.8"
-    fps = 30
+    tracker_name = "MyTracker"
+    detection_rate = "1"
+    fps = 5
 
     gt_dir = rf"D:\DeepLearning\Experiment\Multi Object Tracking\TrackEval\data\gt_fps_{fps}"
     if not os.path.exists(gt_dir):
@@ -127,6 +126,6 @@ if __name__ == "__main__":
 
     gt_files = glob.glob(os.path.join(gt_dir, "*.txt"))
     ts_files = glob.glob(
-        rf"D:\DeepLearning\Experiment\Multi Object Tracking\Apple-Counting\runs\sensitivity_analysis\{tracker_name}_dr_{detection_rate}_fps_{fps}\*_tracks_result.txt"
+        rf"D:\DeepLearning\Experiment\Multi Object Tracking\Apple-Counting\runs\sensitivity_analysis_yolov8_mixed\{tracker_name}_high_0.3_low_0.1_new_0.4_dr_{detection_rate}_fps_{fps}\?_tracks_result.txt"
     )
     motMetrics(gt_files, ts_files)

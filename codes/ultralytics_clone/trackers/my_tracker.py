@@ -84,8 +84,8 @@ class MyTrack(STrack):
 
         self.tracklet_len = 0
         self.state = TrackState.Tracked
-        # if frame_id == 1:
-        #     self.is_activated = True
+        if frame_id == 1:
+            self.is_activated = True
         self.frame_id = frame_id
         self.start_frame = frame_id
 
@@ -155,17 +155,9 @@ class MyTrack(STrack):
         #     for vx_vy in vx_vys:
         #         print(vx_vy)
 
-    def force_update(self, good_stracks, coeff):
-        vx_vys = []
-
-        for good_strack in good_stracks:
-            vx_vys.append([good_strack.mean[4], good_strack.mean[5]])
-
-        if len(vx_vys) > 0:
-            vx_vy = np.mean(vx_vys, axis=0)
-
-            self.mean[4] = vx_vy[0] * coeff
-            self.mean[5] = vx_vy[1] * coeff
+    def force_update(self, vx_vy, coeff):
+        self.mean[4] = vx_vy[0] * coeff
+        self.mean[5] = vx_vy[1] * coeff
 
     @property
     def tlwh(self):
@@ -354,8 +346,6 @@ class MyTracker:
             if self.frame_id - track.start_frame > self.args.activate_thresh:
                 track.mark_removed()
                 removed_stracks.append(track)
-            # else:
-            # self.tracked_stracks.append(track)
         # Step 4: Init new stracks
         for inew in u_detection:
             track = detections[inew]
@@ -365,7 +355,13 @@ class MyTracker:
             track.activate(self.kalman_filter, self.frame_id)
 
             # good strack의 정보로 track 강제 업데이트
-            track.force_update(good_stracks, self.args.new_track_update_coeff)
+            vx_vys = []
+            for good_strack in good_stracks:
+                vx_vys.append([good_strack.mean[4], good_strack.mean[5]])
+
+            if len(vx_vys) > 0:
+                vx_vy = np.mean(vx_vys, axis=0)
+                track.force_update(vx_vy, self.args.new_track_update_coeff)
 
             activated_stracks.append(track)
         # Step 5: Update state
@@ -393,7 +389,6 @@ class MyTracker:
             if track.is_activated:
                 track.calc_coefficient_matrix(good_stracks)
 
-        # self.good_stracks.extend(good_stracks)
         return np.asarray(
             [x.tlbr.tolist() + [x.track_id, x.score, x.cls, x.idx] for x in self.tracked_stracks if x.is_activated],
             dtype=np.float32,

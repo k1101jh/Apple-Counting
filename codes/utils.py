@@ -64,16 +64,16 @@ def draw_trajectory(image, track_history, track_id):
     points = np.hstack(track_history).astype(np.int32).reshape((-1, 1, 2))
     color = compute_color_for_labels(track_id)
     text_pos = [int(track_history[-1][0]), int(track_history[-1][1])]
-    cv2.putText(
-        image,
-        f"{track_id}",
-        text_pos,
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.5,
-        (255, 255, 255),
-        1,
-        cv2.LINE_AA,
-    )
+    # cv2.putText(
+    #     image,
+    #     f"{track_id}",
+    #     text_pos,
+    #     cv2.FONT_HERSHEY_SIMPLEX,
+    #     0.5,
+    #     (255, 255, 255),
+    #     1,
+    #     cv2.LINE_8,
+    # )
     cv2.polylines(
         image,
         [points],
@@ -84,7 +84,7 @@ def draw_trajectory(image, track_history, track_id):
     )
 
 
-def draw_bbox(image, box_xyxy, resize_ratio, color):
+def draw_bbox(image, box_xyxy, resize_ratio, color, thickness=2):
     x1, y1, x2, y2 = box_xyxy
     top_left_x = float(x1 * resize_ratio)
     top_left_y = float(y1 * resize_ratio)
@@ -95,5 +95,5 @@ def draw_bbox(image, box_xyxy, resize_ratio, color):
         [round(top_left_x), round(top_left_y)],
         [round(bottom_right_x), round(bottom_right_y)],
         color,
-        2,
+        thickness,
     )

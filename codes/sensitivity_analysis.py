@@ -39,6 +39,7 @@ def sensitivity_analysis(
     fps,
     resized_height=1000,
     plot_lost_tracker=False,
+    plot_bbox_conf_thres=0.05,
     show=False,
     save=False,
 ):
@@ -61,6 +62,7 @@ def sensitivity_analysis(
         result_path=result_path,
         save_name=dataset.vid_dir,
         plot_lost_tracker=plot_lost_tracker,
+        plot_bbox_conf_thres=plot_bbox_conf_thres,
     )
 
     if save:
@@ -116,7 +118,7 @@ def sensitivity_analysis(
                 tracks_result_writer.writerow([counter.frame_id, int(track_id)] + box_xywh + [1, -1, -1, -1])
 
         dists = mm.distances.iou_matrix(gt_xywh_points, hypothesis_xywh_points, max_iou=0.5)
-        frameid = acc.update(bbox_data.id, activated_track_ids, dists)
+        # frameid = acc.update(bbox_data.id, activated_track_ids, dists)
 
         # Display the annotated frame
         if show:
@@ -125,6 +127,7 @@ def sensitivity_analysis(
             # Break the loop if 'q' is pressed
             if cv2.waitKey(1) & 0xFF == ord("q"):
                 break
+
         if save:
             vid_writer.write(resized_frame)
 
@@ -163,12 +166,12 @@ def sensitivity_analysis(
         counted_tracks_result_file.close()
 
     # Metric 계산
-    mh = mm.metrics.create()
-    summary = mh.compute(acc, metrics=mm.metrics.motchallenge_metrics, name="full")
+    # mh = mm.metrics.create()
+    # summary = mh.compute(acc, metrics=mm.metrics.motchallenge_metrics, name="full")
 
-    strsummary = mm.io.render_summary(summary, formatters=mh.formatters, namemap=mm.io.motchallenge_metric_names)
-    print(strsummary)
-    summary.to_json(os.path.join(result_path, dataset.vid_dir + "_metrics.json"))
+    # strsummary = mm.io.render_summary(summary, formatters=mh.formatters, namemap=mm.io.motchallenge_metric_names)
+    # print(strsummary)
+    # summary.to_json(os.path.join(result_path, dataset.vid_dir + "_metrics.json"))
 
     return num_tracks, num_apples
 
@@ -188,7 +191,7 @@ if __name__ == "__main__":
     seed = 2023
 
     sensitivity_analysis_data_path = r"D:\DeepLearning\Dataset\Apple\SensitivityAnalysis"
-    tracker_name = "ByteTrack"
+    tracker_name = "MyTracker"
     count_thres = 1 / 4
 
     tracker_config_pathes = {
@@ -203,8 +206,8 @@ if __name__ == "__main__":
         "MyTracker": MyTracker,
     }
 
-    detection_rates = [1, 0.8, 0.6, 0.4, 0.2]
-    fps_list = [30]
+    detection_rates = [1]
+    fps_list = [30, 15, 10, 5]
 
     tracker_config_path = tracker_config_pathes[tracker_name]
     tracker_config = OmegaConf.load(tracker_config_path)
@@ -215,7 +218,7 @@ if __name__ == "__main__":
             random.seed(seed)
             np.random.seed(seed)
 
-            result_path = f"runs/sensitivity_analysis/{tracker_name}_dr_{detection_rate}_fps_{fps}"
+            result_path = f"runs/sensitivity_analysis_faster_rcnn/{tracker_name}_high_{tracker_config.track_high_thresh}_low_{tracker_config.track_low_thresh}_new_{tracker_config.new_track_thresh}_dr_{detection_rate}_fps_{fps}"
             vid_dirs = os.listdir(sensitivity_analysis_data_path)
             counting_results = {}
 
@@ -239,6 +242,7 @@ if __name__ == "__main__":
                     fps=fps,
                     resized_height=resized_height,
                     plot_lost_tracker=True,
+                    plot_bbox_conf_thres=tracker_config.track_low_thresh,
                     show=False,
                     save=True,
                 )

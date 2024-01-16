@@ -6,6 +6,7 @@ import argparse
 import glob
 import json
 import shutil
+from time import time
 from tqdm import tqdm
 from omegaconf import OmegaConf
 from collections import defaultdict
@@ -30,9 +31,11 @@ def counting(
     count_thres,
     resized_height=1000,
     plot_lost_tracker=False,
+    plot_bbox_conf_thres=0.05,
     show=False,
     save=False,
 ):
+    time_list = []
     # Open the video file
     cap = cv2.VideoCapture(video_path)
 
@@ -50,6 +53,7 @@ def counting(
         result_path=result_path,
         save_name=vid_filename,
         plot_lost_tracker=plot_lost_tracker,
+        plot_bbox_conf_thres=plot_bbox_conf_thres,
     )
 
     if save:
@@ -63,6 +67,7 @@ def counting(
     # Loop through the video frames
     while cap.isOpened():
         # Read a frame from the video
+        start_time = time()
         success, frame = cap.read()
 
         if success:
@@ -83,6 +88,15 @@ def counting(
         else:
             # Break the loop if the end of the video is reached
             break
+        end_time = time()
+        time_list.append(end_time - start_time)
+
+    # 프레임 처리 시간 및 FPS 출력
+    print(f"average time: {np.mean(time_list)}")
+    print(f"min time: {np.min(time_list)}")
+    print(f"max time: {np.max(time_list)}")
+    print(f"mid time: {np.median(time_list)}")
+    print(f"FPS: {int(1./np.mean(time_list))}")
 
     num_tracks = counter.get_num_tracks()
     num_apples = counter.get_num_counted_tracks()
@@ -112,7 +126,7 @@ if __name__ == "__main__":
     # counting(**vars(opt))
 
     task = "tracking"
-    tracker_name = "ByteTrack"
+    tracker_name = "MyTracker"
     count_thres = 1 / 4
     resized_height = 1000
 
@@ -146,13 +160,13 @@ if __name__ == "__main__":
     #     save=False,
     # )
 
-    # vid_file_list = glob.glob(r"D:\DeepLearning\Dataset\RDA apple data\2023-07-26\*\*R.mp4")
+    # vid_file_list = glob.glob(r"D:\DeepLearning\Dataset\RDA apple data\2023-07-26\*\*L.mp4")
     # vid_file_list = glob.glob(r"D:\DeepLearning\Dataset\RDA apple data\2023-08-16\*\*R.mp4")
     # vid_file_list = glob.glob(r"D:\DeepLearning\Dataset\RDA apple data\2023-10-06\*\*L.mp4")
     vid_file_list = glob.glob(r"D:\DeepLearning\Dataset\RDA apple data\*\*\*[LR].mp4")
 
     model_path = "detection_checkpoints/yolov8m_RDA_800/weights/best.pt"
-    result_path = f"runs/{task}/{tracker_name}/RDA_800_final"
+    result_path = f"runs/{task}/{tracker_name}/RDA_800_final_new_track_only"
     counting_results = {}
     tracker_config = OmegaConf.load(tracker_config_path)
 

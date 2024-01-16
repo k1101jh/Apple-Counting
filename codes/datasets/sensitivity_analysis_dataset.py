@@ -60,6 +60,7 @@ class SensitivityAnalysisDataset(Dataset):
         self.img_filelist.sort()
 
         self.gt_filepath = os.path.join(os.path.join(dataset_path, vid_dir, "gt/gt.txt"))
+        # self.gt_filepath = os.path.join(os.path.join(dataset_path, vid_dir, "faster_rcnn_inference_result.txt"))
 
         with open(self.gt_filepath, "r") as f:
             gt_lines = f.readlines()
@@ -68,6 +69,7 @@ class SensitivityAnalysisDataset(Dataset):
         frame = "1"
         boxes_xyxy = []
         track_ids = []
+        conf_scores = []
         for line in gt_lines:
             line = line.strip()
             vals = line.split(",")
@@ -75,23 +77,25 @@ class SensitivityAnalysisDataset(Dataset):
             if vals[0] != frame:
                 bbox_data = Boxes(
                     boxes=torch.stack(boxes_xyxy, dim=0),
-                    conf=torch.ones(len(boxes_xyxy)),
+                    conf=torch.stack(conf_scores, dim=0),
                     cls=torch.zeros(len(boxes_xyxy)),
                     track_id=torch.tensor(track_ids),
                 )
                 self.frame_datas.append(bbox_data)
                 boxes_xyxy = []
                 track_ids = []
+                conf_scores = []
                 frame = vals[0]
 
             track_ids.append(int(vals[1]))
             box = [float(vals[2]), float(vals[3]), float(vals[4]), float(vals[5])]
             box_xyxy = torch.tensor([box[0], box[1], box[0] + box[2], box[1] + box[3]])
             boxes_xyxy.append(box_xyxy)
+            conf_scores.append(torch.tensor(float(vals[-1])))
 
         bbox_data = Boxes(
             boxes=torch.stack(boxes_xyxy, dim=0),
-            conf=torch.ones(len(boxes_xyxy)),
+            conf=torch.stack(conf_scores, dim=0),
             cls=torch.zeros(len(boxes_xyxy)),
             track_id=torch.tensor(track_ids),
         )
