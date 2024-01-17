@@ -2,13 +2,26 @@ import os
 import cv2
 import glob
 import json
+import logging
+import hydra
 import numpy as np
 from tqdm import tqdm
+from omegaconf import OmegaConf
+from omegaconf import DictConfig
+from hydra.utils import instantiate
 
 from utils import compute_color_for_labels
 from utils import draw_trajectory
 from utils import draw_bbox
 from utils import display_count
+
+
+OmegaConf.register_new_resolver("merge", lambda x, y: x + y)
+logging.basicConfig(
+    format="%(asctime)s - %(levelname)s: %(message)s",
+    level=logging.INFO,
+    datefmt="%I:%M:%S",
+)
 
 
 def visualize_counted_tracks(vid_path, tracks_info_path, result_path, count_thres, resized_height):

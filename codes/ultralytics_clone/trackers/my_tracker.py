@@ -228,7 +228,8 @@ class MyTracker:
 
         self.frame_id = 0
         self.args = args
-        self.good_track_thresh = args.good_track_thresh
+        # fps가 바뀌면 good track thresh도 바뀌어야 함
+        self.good_track_thresh = args.good_track_thresh // (30 // frame_rate)
         self.max_time_lost = int(frame_rate / 30.0 * args.track_buffer)
         self.kalman_filter = self.get_kalmanfilter()
         self.reset_id()

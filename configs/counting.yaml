@@ -1,0 +1,13 @@
+defaults:
+  - tracker: my_tracker
+
+experiment_name: ${now:%Y-%m-%d}_${now:%H-%M-%S}
+log: True
+
+resized_height: 1000
+count_thres: 0.25
+
+model_path: "detection_checkpoints/yolov8m_RDA_800/weights/best.pt"
+result_dir: "runs/tracking"
+vid_file_glob_path: "D:/DeepLearning/Dataset/RDA apple data/*/*/*[LR].mp4"
+task_name: NULL

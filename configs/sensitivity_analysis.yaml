@@ -1,0 +1,36 @@
+defaults:
+  - tracker: my_tracker
+
+experiment_name: ${now:%Y-%m-%d}_${now:%H-%M-%S}
+log: True
+
+resized_height: 1000
+seed: 2023
+
+dataset_path: "D:/DeepLearning/Dataset/Apple/SensitivityAnalysis"
+result_dir: "runs/sensitivity_analysis"
+
+fps_list:
+  - 30
+  - 15
+  - 10
+  - 5
+
+detection_rate_list:
+  - 1
+  - 0.8
+  - 0.6
+  - 0.4
+  - 0.2
+
+count_thres: 0.25
+
+# visualize data
+visualize_data:
+  resized_height: NULL
+  vid_dir: "1"
+  result_dir: ${sensitivity_analysis.result_dir}/visualize_data
+  detection_rate: 1.0
+  plot_bbox_conf_thres: 0.35
+  thickness: 2
+

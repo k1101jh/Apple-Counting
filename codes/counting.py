@@ -6,10 +6,14 @@ import argparse
 import glob
 import json
 import shutil
+import yaml
+import logging
+import hydra
 from time import time
 from tqdm import tqdm
 from omegaconf import OmegaConf
-from collections import defaultdict
+from omegaconf import DictConfig
+from hydra.utils import instantiate
 
 from ultralytics import YOLO
 from ultralytics_clone.trackers.byte_tracker import BYTETracker
@@ -21,6 +25,14 @@ from utils import display_count
 from utils import draw_trajectory
 from utils import draw_bbox
 from utils import xywh_to_xyxy
+
+
+OmegaConf.register_new_resolver("merge", lambda x, y: x + y)
+logging.basicConfig(
+    format="%(asctime)s - %(levelname)s: %(message)s",
+    level=logging.INFO,
+    datefmt="%I:%M:%S",
+)
 
 
 def counting(
@@ -114,82 +126,44 @@ def counting(
     return num_tracks, num_apples
 
 
-def parse_opt():
-    parser = argparse.ArgumentParser()
+@hydra.main(version_base=None, config_path="../configs", config_name="counting")
+def count_all_vids(cfg: DictConfig):
+    config_yaml = OmegaConf.to_yaml(cfg)
+    print(config_yaml)
 
-    opt = parser.parse_args()
-    return opt
+    tracker_class_name = cfg.tracker._target_[cfg.tracker._target_.rfind(".") + 1 :]
+    result_dir = os.path.join(cfg.result_dir, tracker_class_name)
+    if cfg.task_name:
+        result_dir = os.path.join(result_dir, cfg.task_name)
+    vid_file_list = glob.glob(cfg.vid_file_glob_path)
 
-
-if __name__ == "__main__":
-    opt = parse_opt()
-    # counting(**vars(opt))
-
-    task = "tracking"
-    tracker_name = "MyTracker"
-    count_thres = 1 / 4
-    resized_height = 1000
-
-    tracker_config_pathes = {
-        "ByteTrack": "configs/bytetrack.yaml",
-        "BotSORT": "configs/bot_sort.yaml",
-        "MyTracker": "configs/my_tracker.yaml",
-    }
-
-    tracker_constructors = {
-        "ByteTrack": BYTETracker,
-        "BotSORT": BOTSORT,
-        "MyTracker": MyTracker,
-    }
-
-    tracker_config_path = tracker_config_pathes[tracker_name]
-
-    # tracker_config = OmegaConf.load(tracker_config_path)
-    # tracker = tracker_constructors[tracker_name](tracker_config)
-
-    # counting(
-    #     model_path=r"./detection_checkpoints/yolov8m_RDA_800/weights/best.pt",
-    #     tracker=tracker,
-    #     # video_path=r"D:\DeepLearning\Dataset\RDA apple data\2023-08-16\7\230816-Cam1-Line07-L.mp4",
-    #     video_path=r"D:\DeepLearning\Dataset\RDA apple data\2023-10-06\7\231006-Cam1-Line07-L.mp4",
-    #     result_path=r"runs/RDA apple data_1000",
-    #     count_thres=count_thres,
-    #     resized_height=resized_height,
-    #     plot_lost_tracker=True,
-    #     display=True,
-    #     save=False,
-    # )
-
-    # vid_file_list = glob.glob(r"D:\DeepLearning\Dataset\RDA apple data\2023-07-26\*\*L.mp4")
-    # vid_file_list = glob.glob(r"D:\DeepLearning\Dataset\RDA apple data\2023-08-16\*\*R.mp4")
-    # vid_file_list = glob.glob(r"D:\DeepLearning\Dataset\RDA apple data\2023-10-06\*\*L.mp4")
-    vid_file_list = glob.glob(r"D:\DeepLearning\Dataset\RDA apple data\*\*\*[LR].mp4")
-
-    model_path = "detection_checkpoints/yolov8m_RDA_800/weights/best.pt"
-    result_path = f"runs/{task}/{tracker_name}/RDA_800_final_new_track_only"
     counting_results = {}
-    tracker_config = OmegaConf.load(tracker_config_path)
 
     # Load the YOLOv8 model
-    model = YOLO(model_path)
+    model = YOLO(cfg.model_path)
 
     for vid_file_path in tqdm(vid_file_list, desc="vids", position=0, leave=True):
-        tracker = tracker_constructors[tracker_name](tracker_config)
+        tracker = instantiate(cfg.tracker)
 
         num_tracks, num_apples = counting(
             model=model,
             tracker=tracker,
             video_path=vid_file_path,
-            result_path=result_path,
-            count_thres=count_thres,
-            resized_height=resized_height,
+            result_path=result_dir,
+            count_thres=cfg.count_thres,
+            resized_height=cfg.resized_height,
             plot_lost_tracker=True,
             show=False,
             save=True,
         )
         counting_results[os.path.basename(vid_file_path)] = {"num_tracks": num_tracks, "num_apples": num_apples}
 
-    with open(os.path.join(result_path, "counting_result.json"), "a") as f:
+    with open(os.path.join(result_dir, "counting_result.json"), "a") as f:
         json.dump(counting_results, f, indent=4)
 
-    shutil.copy(tracker_config_path, os.path.join(result_path, os.path.basename(tracker_config_path)))
+    with open(os.path.join(result_dir, "configs.yaml"), "w") as f:
+        yaml.dump(config_yaml, f)
+
+
+if __name__ == "__main__":
+    count_all_vids()

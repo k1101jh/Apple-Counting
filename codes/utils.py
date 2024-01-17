@@ -60,20 +60,21 @@ def display_count(image, text, pos):
     )
 
 
-def draw_trajectory(image, track_history, track_id):
+def draw_trajectory(image, track_history, track_id, text=None):
     points = np.hstack(track_history).astype(np.int32).reshape((-1, 1, 2))
     color = compute_color_for_labels(track_id)
     text_pos = [int(track_history[-1][0]), int(track_history[-1][1])]
-    # cv2.putText(
-    #     image,
-    #     f"{track_id}",
-    #     text_pos,
-    #     cv2.FONT_HERSHEY_SIMPLEX,
-    #     0.5,
-    #     (255, 255, 255),
-    #     1,
-    #     cv2.LINE_8,
-    # )
+    if text:
+        cv2.putText(
+            image,
+            f"{track_id}",
+            text_pos,
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.5,
+            (255, 255, 255),
+            1,
+            cv2.LINE_8,
+        )
     cv2.polylines(
         image,
         [points],

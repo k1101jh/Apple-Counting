@@ -7,9 +7,13 @@ import csv
 import glob
 import json
 import random
+import logging
+import hydra
 import motmetrics as mm
 from tqdm import tqdm
 from omegaconf import OmegaConf
+from omegaconf import DictConfig
+from hydra.utils import instantiate
 from collections import defaultdict
 
 from ultralytics import YOLO
@@ -28,6 +32,13 @@ from utils import xyxy_to_cxywh
 from utils import xywh_to_cxywh
 from utils import tlbr_to_xywh
 from utils import tlbr_to_cxywh
+
+OmegaConf.register_new_resolver("merge", lambda x, y: x + y)
+logging.basicConfig(
+    format="%(asctime)s - %(levelname)s: %(message)s",
+    level=logging.INFO,
+    datefmt="%I:%M:%S",
+)
 
 
 def sensitivity_analysis(
@@ -122,7 +133,7 @@ def sensitivity_analysis(
 
         # Display the annotated frame
         if show:
-            cv2.imshow("YOLOv8 Tracking", resized_frame)
+            cv2.imshow("Tracking", resized_frame)
 
             # Break the loop if 'q' is pressed
             if cv2.waitKey(1) & 0xFF == ord("q"):
@@ -176,77 +187,51 @@ def sensitivity_analysis(
     return num_tracks, num_apples
 
 
-def parse_opt():
-    parser = argparse.ArgumentParser()
+@hydra.main(version_base=None, config_path="../configs", config_name="sensitivity_analysis")
+def sensitivity_analysis_all_vids(cfg: DictConfig):
+    config_yaml = OmegaConf.to_yaml(cfg)
+    print(config_yaml)
 
-    opt = parser.parse_args()
-    return opt
+    tracker_class_name = cfg.tracker._target_[cfg.tracker._target_.rfind(".") + 1 :]
 
-
-if __name__ == "__main__":
-    opt = parse_opt()
-    # counting(**vars(opt))
-
-    resized_height = 1000
-    seed = 2023
-
-    sensitivity_analysis_data_path = r"D:\DeepLearning\Dataset\Apple\SensitivityAnalysis"
-    tracker_name = "MyTracker"
-    count_thres = 1 / 4
-
-    tracker_config_pathes = {
-        "ByteTrack": "configs/bytetrack.yaml",
-        "BotSORT": "configs/bot_sort.yaml",
-        "MyTracker": "configs/my_tracker.yaml",
-    }
-
-    tracker_constructors = {
-        "ByteTrack": BYTETracker,
-        "BotSORT": BOTSORT,
-        "MyTracker": MyTracker,
-    }
-
-    detection_rates = [1]
-    fps_list = [30, 15, 10, 5]
-
-    tracker_config_path = tracker_config_pathes[tracker_name]
-    tracker_config = OmegaConf.load(tracker_config_path)
-
-    for fps in fps_list:
+    for fps in cfg.fps_list:
         interval = 30 // fps
-        for detection_rate in detection_rates:
-            random.seed(seed)
-            np.random.seed(seed)
+        for detection_rate in cfg.detection_rate_list:
+            random.seed(cfg.seed)
+            np.random.seed(cfg.seed)
 
-            result_path = f"runs/sensitivity_analysis_faster_rcnn/{tracker_name}_high_{tracker_config.track_high_thresh}_low_{tracker_config.track_low_thresh}_new_{tracker_config.new_track_thresh}_dr_{detection_rate}_fps_{fps}"
-            vid_dirs = os.listdir(sensitivity_analysis_data_path)
+            result_dir = os.path.join(
+                cfg.result_dir,
+                tracker_class_name,
+                f"high_{cfg.tracker.args.track_high_thresh}_low_{cfg.tracker.args.track_low_thresh}_new_{cfg.tracker.args.new_track_thresh}_dr_{detection_rate}_fps_{fps}",
+            )
+            os.makedirs(result_dir, exist_ok=True)
             counting_results = {}
 
+            vid_dirs = os.listdir(cfg.dataset_path)
             for vid_dir in vid_dirs:
-                tracker = tracker_constructors[tracker_name](tracker_config, frame_rate=fps)
-
-                # fps가 바뀌면 good track thresh도 바뀌어야 함
-                if tracker_name == "MyTracker":
-                    tracker.good_track_thresh = tracker.good_track_thresh // interval
-
-                dataset = SensitivityAnalysisDataset(
-                    sensitivity_analysis_data_path, vid_dir, detection_thres=detection_rate
-                )
+                tracker = instantiate(cfg.tracker, frame_rate=fps)
+                dataset = SensitivityAnalysisDataset(cfg.dataset_path, vid_dir, detection_thres=detection_rate)
 
                 num_tracks, num_apples = sensitivity_analysis(
                     tracker=tracker,
                     dataset=dataset,
                     interval=interval,
-                    result_path=result_path,
-                    count_thres=count_thres,
+                    result_path=result_dir,
+                    count_thres=cfg.count_thres,
                     fps=fps,
-                    resized_height=resized_height,
+                    resized_height=cfg.resized_height,
                     plot_lost_tracker=True,
-                    plot_bbox_conf_thres=tracker_config.track_low_thresh,
+                    plot_bbox_conf_thres=cfg.tracker.args.track_low_thresh,
                     show=False,
                     save=True,
                 )
+
                 counting_results[vid_dir] = {"num_tracks": num_tracks, "num_apples": num_apples}
 
-                with open(os.path.join(result_path, "counting_result.json"), "a") as f:
+                with open(os.path.join(result_dir, "counting_result.json"), "a") as f:
                     json.dump(counting_results, f, indent=4)
+
+
+if __name__ == "__main__":
+    sensitivity_analysis_all_vids()

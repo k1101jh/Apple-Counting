@@ -1,0 +1,12 @@
+defaults:
+  - tracker: my_tracker
+
+experiment_name: ${now:%Y-%m-%d}_${now:%H-%M-%S}
+log: True
+
+resized_height: 1000
+seed: 2023
+
+# sensitivity analysis
+sensitivity_analysis:
+  
