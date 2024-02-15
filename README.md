@@ -1,8 +1,21 @@
 # 사과나무 영상에서 YOLO와 Tracking을 사용한 사과 계수
 
+예시 영상
 
+<img src="/readme_images/tracking result sample.gif">
 
 ## 데이터셋
+### 학습 데이터셋
+**탐지 데이터셋**
+
+
+### 성능 평가 데이터셋
+**Tracking**
+- [이전 논문](https://doi.org/10.1016/j.compag.2022.107513)에서 제공한 [Sensitivity Anlaysis 데이터셋](https://zenodo.org/records/7383338)
+  - 사과나무 영상 7개
+  - 사람이 직접 촬영
+
+**Counting**
 - 농촌진흥청 사과나무 데이터셋
   - 대구 군위군 사과연구소에서 촬영
   - 2023년 7월, 8월, 10월에 촬영
@@ -12,9 +25,7 @@
     - 6개의 열에 대해 촬영. 각 열마다 5그루씩
   - 10월 데이터
     - 3개의 열에 대해 촬영. 각 열마다 17, 35, 17그루
-- [이전 논문](https://doi.org/10.1016/j.compag.2022.107513)에서 제공한 [Sensitivity Anlaysis 데이터셋](https://zenodo.org/records/7383338)
-  - 사과나무 영상 7개
-  - 사람이 직접 촬영
+
 
 ## 사과 탐지 모델
 - [YOLOv8](https://github.com/ultralytics/ultralytics)
@@ -28,20 +39,22 @@
   - 기준 Track의 속도를 사용하여 매칭에 실패한 track의 속도를 추정
   - 기준 Track의 속도를 새로 생성한 track의 속도로 사용
 
+<img src="/readme_images/제안 방법 흐름도.png">
+
 ## 평가 지표
 - [MOTA](https://doi.org/10.1007/s11263-020-01393-0)
   - MOT challenge에서 사용하는 추적 성능 지표
 
 ## 실행 코드
-- counting.py
+- `counting.py`
   - 영상을 입력받아 counting 수행
-- visualize_counted_tracks.py
+- `visualize_counted_tracks.py`
   - 영상에 tracking 결과 그리기
-- sensitivity_analysis.py
+- `sensitivity_analysis.py`
   - Sensitivity Analysis 데이터로 counting 수행
-- visualize_sensitivity_analysis_data.py
+- `visualize_sensitivity_analysis_data.py`
   - Sensitivity Analysis 영상에 tracking 결과 그리기
-- eval_mot_metrics.py
+- `eval_mot_metrics.py`
   - counting 수행 이후 MOT 점수 계산
 
 ## 실험 결과
@@ -109,8 +122,43 @@
 ↑: 높을수록 좋음
 ↓: 낮을수록 좋음
 
+**MOTA 점수 비교**
+<img src="/readme_images/MOTA 비교.png">
+
 - Faster R-CNN을 사용한 30프레임 영상을 제외하고 제안 방법이 ByteTrack보다 높은 성능을 보임
 
+
+### Counting 성능 평가 (YOLOv8 사용)
+**농촌진흥청 사과나무 데이터셋**
+
+|사과 품종|촬영 시기|촬영 방향|ByteTrack 오류율|제안 방법 오류율|
+|:---|:---:|:---:|---:|---:|
+|후지|7월|좌측|87.1%|**84.1%**|
+|후지|7월|우측|92.0%|**90.5%**|
+|아리수|7월|좌측|35.2%|**23.9%**|
+|아리수|7월|우측|49.9%|**39.7%**|
+|후지|8월|좌측|57.1%|**55.0%**|
+|후지|8월|우측|79.3%|**77.3%**|
+|아리수|8월|좌측|14.6%|**9.8%**|
+|아리수|8월|우측|32.8%|**27.9%**|
+|후지|10월|좌측|20.3%|**10.7%**|
+|후지|10월|우측|40.1%|**28.9%**|
+|아리수|10월|좌측|--|--|
+|아리수|10월|우측|--|--|
+
+- 좌측에서 촬영한 영상을 사용했을 때 우측에서 촬영한 영상보다 성능이 좋음
+  - 좌측 촬영 동영상은 태양을 등지고 촬영
+  - 우측 촬영 동영상은 태양을 마주보고 촬영
+- 나중에 촬영한 사과를 사용했을 때 성능이 좋음
+  - 7월 사과는 초록색인 반면 10월 사과는 붉은색을 띈다.
+- 같은 시기에 아리수가 후지보다 성능이 좋음
+  - 아리수는 후지보다 빠르게 붉은색을 띈다.
+
+**촬영 시기에 따른 사과 비교**
+|사과 품종|7월|8월|10월|
+|---|---|---|---|
+|아리수|<img src="/readme_images/7월 아리수.png">|<img src="/readme_images/8월 아리수.png">|--|
+|후지|<img src="/readme_images/7월 후지.png">|<img src="/readme_images/8월 후지.png">|<img src="/readme_images/10월 후지.png">|
 
 ## 참고사항
 - ByteTrack 알고리즘에서 [제거한 track이 매칭될 수 있는 오류](https://github.com/ifzhang/ByteTrack/issues/259)를 발견하여 수정 후 사용하였음
