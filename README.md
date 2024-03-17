@@ -2,7 +2,9 @@
 
 예시 영상
 
-<img src="/readme_images/tracking result sample.gif">
+|사과 추적 영상|계수된 사과만 표시|
+|---|---| 
+|<img src="/readme_images/tracking sample.gif">|<img src="/readme_images/tracking result sample.gif">|
 
 ## 데이터셋
 ### 학습 데이터셋
