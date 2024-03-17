@@ -40,6 +40,7 @@
   - 기준 Track의 속도를 새로 생성한 track의 속도로 사용
 
 <img src="/readme_images/제안 방법 흐름도.png">
+초록색 상자: 제안 부분
 
 ## 평가 지표
 - [MOTA](https://doi.org/10.1007/s11263-020-01393-0)
