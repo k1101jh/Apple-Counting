@@ -35,7 +35,9 @@ def visualize_counted_tracks(vid_path, tracks_info_path, result_path, count_thre
     resized_width = round(w * resize_ratio)
     count_thres_width = resized_width * count_thres
 
-    vid_writer = cv2.VideoWriter(result_path, cv2.VideoWriter_fourcc(*"mp4v"), fps, (resized_width, resized_height))
+    vid_writer = cv2.VideoWriter(
+        result_path, cv2.VideoWriter_fourcc(*"mp4v"), fps, (resized_width, resized_height)
+    )
 
     with open(tracks_info_path, "r") as f:
         track_info = json.load(f)
@@ -55,7 +57,9 @@ def visualize_counted_tracks(vid_path, tracks_info_path, result_path, count_thre
 
         ret, frame = capture.read()
         if ret:
-            resized_frame = cv2.resize(frame, dsize=(resized_width, resized_height), interpolation=cv2.INTER_CUBIC)
+            resized_frame = cv2.resize(
+                frame, dsize=(resized_width, resized_height), interpolation=cv2.INTER_CUBIC
+            )
 
             for started_track_id in start_frames[frame_id]:
                 exist_track_ids.append(str(started_track_id))
@@ -125,36 +129,29 @@ def visualize_counted_tracks(vid_path, tracks_info_path, result_path, count_thre
     capture.release()
 
 
-if __name__ == "__main__":
-    source_dir = "runs/tracking/MyTracker/RDA_800_final"
+@hydra.main(version_base=None, config_path="../configs", config_name="counting")
+def visualize_counted_tracks_all_vids(cfg: DictConfig):
+    config_yaml = OmegaConf.to_yaml(cfg)
+    print(config_yaml)
 
-    source_vid_dir = r"D:/DeepLearning/Dataset/RDA apple data/*"
+    tracker_class_name = cfg.tracker._target_[cfg.tracker._target_.rfind(".") + 1 :]
+    result_dir = os.path.join(cfg.result_dir, tracker_class_name)
+    if cfg.task_name:
+        result_dir = os.path.join(result_dir, cfg.task_name)
 
-    filenames = [
-        "230726-Cam1-Line07-L.mp4",
-        "230726-Cam1-Line10-L.mp4",
-        "230726-Cam1-Line11-L.mp4",
-        "230726-Cam1-Line14-L.mp4",
-        "230726-Cam1-Line15-L.mp4",
-        "230726-Cam1-Line18-L.mp4",
-        "230816-Cam1-Line07-L.mp4",
-        "230816-Cam1-Line10-L.mp4",
-        "230816-Cam1-Line11-L.mp4",
-        "230816-Cam1-Line14-L.mp4",
-        "230816-Cam1-Line15-L.mp4",
-        "230816-Cam1-Line18-L.mp4",
-        "231006-Cam1-Line07-L.mp4",
-        "231006-Cam1-Line11-L.mp4",
-        "231006-Cam1-Line15-L.mp4",
-    ]
+    vid_file_list = glob.glob(result_dir + "/*.mp4")
 
     count_thres = 1 / 4
     resized_height = 1000
 
-    for filename in filenames:
-        source_vid_path = glob.glob(source_vid_dir + "/*/" + filename)[0]
-        track_info_path = os.path.join(source_dir, os.path.splitext(filename)[0] + "_counted_tracks_info.json")
+    for source_vid_path in vid_file_list:
+        filename_without_ext = os.path.splitext(os.path.basename(source_vid_path))[0]
+        track_info_path = os.path.join(result_dir, filename_without_ext + "_counted_tracks_info.json")
 
-        result_path = os.path.join(source_dir, os.path.splitext(filename)[0] + "_counted_tracks.mp4")
+        result_path = os.path.join(result_dir, filename_without_ext + "_counted_tracks.mp4")
 
         visualize_counted_tracks(source_vid_path, track_info_path, result_path, count_thres, resized_height)
+
+
+if __name__ == "__main__":
+    visualize_counted_tracks_all_vids()
